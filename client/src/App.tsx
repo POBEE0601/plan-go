@@ -1,4 +1,4 @@
-// 2026-08-31 라우팅: 홈·인증·대시보드·초대·고객게시판·공지
+// 2026-08-31 라우팅: 홈·인증·대시보드·초대·고객게시판·공지·배포
 import { useEffect } from 'react';
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import { Loader2 } from 'lucide-react';
@@ -10,6 +10,7 @@ import DashboardPage from './pages/DashboardPage';
 import InvitePage from './pages/InvitePage';
 import BoardPage from './pages/BoardPage';
 import NoticePage from './pages/NoticePage';
+import ReleasePage from './pages/ReleasePage';
 import { useAuthStore } from './store/useAuthStore';
 
 function AppRoutes() {
@@ -65,6 +66,8 @@ function AppRoutes() {
       />
       {/* 공지사항: 비회원 조회 가능 */}
       <Route path="/notices/*" element={<NoticePage />} />
+      {/* 2026-08-31 배포게시판: 비회원 조회, 작성은 관리자만 */}
+      <Route path="/releases/*" element={<ReleasePage />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );

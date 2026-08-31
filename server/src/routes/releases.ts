@@ -86,8 +86,11 @@ const parseReleasedAt = (raw: unknown, fallback: string): string => {
   return date.toISOString();
 };
 
-const requireAdmin = (req: AuthRequest, res: import('express').Response): boolean => {
-  if (!req.userId || !isAdminUserId(req.userId)) {
+const requireAdmin = async (
+  req: AuthRequest,
+  res: import('express').Response,
+): Promise<boolean> => {
+  if (!req.userId || !(await isAdminUserId(req.userId))) {
     res.status(403).json({ message: '관리자만 배포게시판을 작성·수정할 수 있습니다.' });
     return false;
   }
@@ -96,12 +99,12 @@ const requireAdmin = (req: AuthRequest, res: import('express').Response): boolea
 
 const router = Router();
 
-router.get('/posts', optionalAuthMiddleware, (req: AuthRequest, res) => {
-  res.json(listReleasePosts(req.userId));
+router.get('/posts', optionalAuthMiddleware, async (req: AuthRequest, res) => {
+  res.json(await listReleasePosts(req.userId));
 });
 
-router.get('/posts/:id', optionalAuthMiddleware, (req: AuthRequest, res) => {
-  const post = getReleasePost(param(req.params.id), req.userId, true);
+router.get('/posts/:id', optionalAuthMiddleware, async (req: AuthRequest, res) => {
+  const post = await getReleasePost(param(req.params.id), req.userId, true);
   if (!post) {
     res.status(404).json({ message: '배포 글을 찾을 수 없습니다.' });
     return;
@@ -109,10 +112,10 @@ router.get('/posts/:id', optionalAuthMiddleware, (req: AuthRequest, res) => {
   res.json(post);
 });
 
-router.post('/posts', authMiddleware, (req: AuthRequest, res) => {
-  if (!requireAdmin(req, res)) return;
+router.post('/posts', authMiddleware, async (req: AuthRequest, res) => {
+  if (!(await requireAdmin(req, res))) return;
 
-  upload.array('files', 8)(req, res, (err) => {
+  upload.array('files', 8)(req, res, async (err) => {
     if (err) {
       res.status(400).json({
         message: err instanceof Error ? err.message : '업로드에 실패했습니다.',
@@ -137,7 +140,7 @@ router.post('/posts', authMiddleware, (req: AuthRequest, res) => {
     }
 
     const releasedAt = parseReleasedAt(req.body.releasedAt, new Date().toISOString());
-    const post = createReleasePost(
+    const post = await createReleasePost(
       req.userId!,
       title,
       content,
@@ -154,10 +157,10 @@ router.post('/posts', authMiddleware, (req: AuthRequest, res) => {
   });
 });
 
-router.patch('/posts/:id', authMiddleware, (req: AuthRequest, res) => {
-  if (!requireAdmin(req, res)) return;
+router.patch('/posts/:id', authMiddleware, async (req: AuthRequest, res) => {
+  if (!(await requireAdmin(req, res))) return;
 
-  upload.array('files', 8)(req, res, (err) => {
+  upload.array('files', 8)(req, res, async (err) => {
     if (err) {
       res.status(400).json({
         message: err instanceof Error ? err.message : '업로드에 실패했습니다.',
@@ -165,7 +168,7 @@ router.patch('/posts/:id', authMiddleware, (req: AuthRequest, res) => {
       return;
     }
 
-    const existing = getReleasePostRaw(param(req.params.id));
+    const existing = await getReleasePostRaw(param(req.params.id));
     if (!existing) {
       removeFiles(toAttachments(req.files as Express.Multer.File[] | undefined));
       res.status(404).json({ message: '배포 글을 찾을 수 없습니다.' });
@@ -211,7 +214,7 @@ router.patch('/posts/:id', authMiddleware, (req: AuthRequest, res) => {
       ...toAttachments(req.files as Express.Multer.File[] | undefined),
     ];
 
-    const updated = updateReleasePost(param(req.params.id), req.userId!, {
+    const updated = await updateReleasePost(param(req.params.id), req.userId!, {
       title,
       content,
       status: statusRaw,
@@ -226,16 +229,16 @@ router.patch('/posts/:id', authMiddleware, (req: AuthRequest, res) => {
   });
 });
 
-router.delete('/posts/:id', authMiddleware, (req: AuthRequest, res) => {
-  if (!requireAdmin(req, res)) return;
+router.delete('/posts/:id', authMiddleware, async (req: AuthRequest, res) => {
+  if (!(await requireAdmin(req, res))) return;
 
-  const existing = getReleasePostRaw(param(req.params.id));
+  const existing = await getReleasePostRaw(param(req.params.id));
   if (!existing) {
     res.status(404).json({ message: '배포 글을 찾을 수 없습니다.' });
     return;
   }
 
-  const ok = deleteReleasePost(param(req.params.id), req.userId!);
+  const ok = await deleteReleasePost(param(req.params.id), req.userId!);
   if (!ok) {
     res.status(403).json({ message: '관리자만 삭제할 수 있습니다.' });
     return;

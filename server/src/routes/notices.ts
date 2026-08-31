@@ -77,8 +77,11 @@ const removeFiles = (attachments: BoardAttachment[]): void => {
 const param = (value: string | string[]): string =>
   Array.isArray(value) ? value[0] : value;
 
-const requireAdmin = (req: AuthRequest, res: import('express').Response): boolean => {
-  if (!req.userId || !isAdminUserId(req.userId)) {
+const requireAdmin = async (
+  req: AuthRequest,
+  res: import('express').Response,
+): Promise<boolean> => {
+  if (!req.userId || !(await isAdminUserId(req.userId))) {
     res.status(403).json({ message: '관리자만 공지사항을 작성·수정할 수 있습니다.' });
     return false;
   }
@@ -87,14 +90,12 @@ const requireAdmin = (req: AuthRequest, res: import('express').Response): boolea
 
 const router = Router();
 
-// 목록 — 비회원 가능
-router.get('/posts', optionalAuthMiddleware, (req: AuthRequest, res) => {
-  res.json(listNoticePosts(req.userId));
+router.get('/posts', optionalAuthMiddleware, async (req: AuthRequest, res) => {
+  res.json(await listNoticePosts(req.userId));
 });
 
-// 상세 — 비회원 가능, 조회수 +1
-router.get('/posts/:id', optionalAuthMiddleware, (req: AuthRequest, res) => {
-  const post = getNoticePost(param(req.params.id), req.userId, true);
+router.get('/posts/:id', optionalAuthMiddleware, async (req: AuthRequest, res) => {
+  const post = await getNoticePost(param(req.params.id), req.userId, true);
   if (!post) {
     res.status(404).json({ message: '공지사항을 찾을 수 없습니다.' });
     return;
@@ -102,11 +103,10 @@ router.get('/posts/:id', optionalAuthMiddleware, (req: AuthRequest, res) => {
   res.json(post);
 });
 
-// 작성 — 관리자만
-router.post('/posts', authMiddleware, (req: AuthRequest, res) => {
-  if (!requireAdmin(req, res)) return;
+router.post('/posts', authMiddleware, async (req: AuthRequest, res) => {
+  if (!(await requireAdmin(req, res))) return;
 
-  upload.array('files', 8)(req, res, (err) => {
+  upload.array('files', 8)(req, res, async (err) => {
     if (err) {
       res.status(400).json({
         message: err instanceof Error ? err.message : '업로드에 실패했습니다.',
@@ -123,7 +123,7 @@ router.post('/posts', authMiddleware, (req: AuthRequest, res) => {
       return;
     }
 
-    const post = createNoticePost(req.userId!, title, content, files);
+    const post = await createNoticePost(req.userId!, title, content, files);
     if (!post) {
       removeFiles(files);
       res.status(403).json({ message: '관리자만 공지사항을 작성할 수 있습니다.' });
@@ -133,11 +133,10 @@ router.post('/posts', authMiddleware, (req: AuthRequest, res) => {
   });
 });
 
-// 수정 — 관리자만
-router.patch('/posts/:id', authMiddleware, (req: AuthRequest, res) => {
-  if (!requireAdmin(req, res)) return;
+router.patch('/posts/:id', authMiddleware, async (req: AuthRequest, res) => {
+  if (!(await requireAdmin(req, res))) return;
 
-  upload.array('files', 8)(req, res, (err) => {
+  upload.array('files', 8)(req, res, async (err) => {
     if (err) {
       res.status(400).json({
         message: err instanceof Error ? err.message : '업로드에 실패했습니다.',
@@ -145,7 +144,7 @@ router.patch('/posts/:id', authMiddleware, (req: AuthRequest, res) => {
       return;
     }
 
-    const existing = getNoticePostRaw(param(req.params.id));
+    const existing = await getNoticePostRaw(param(req.params.id));
     if (!existing) {
       removeFiles(toAttachments(req.files as Express.Multer.File[] | undefined));
       res.status(404).json({ message: '공지사항을 찾을 수 없습니다.' });
@@ -184,7 +183,7 @@ router.patch('/posts/:id', authMiddleware, (req: AuthRequest, res) => {
       ...toAttachments(req.files as Express.Multer.File[] | undefined),
     ];
 
-    const updated = updateNoticePost(param(req.params.id), req.userId!, {
+    const updated = await updateNoticePost(param(req.params.id), req.userId!, {
       title,
       content,
       attachments,
@@ -197,17 +196,16 @@ router.patch('/posts/:id', authMiddleware, (req: AuthRequest, res) => {
   });
 });
 
-// 삭제 — 관리자만
-router.delete('/posts/:id', authMiddleware, (req: AuthRequest, res) => {
-  if (!requireAdmin(req, res)) return;
+router.delete('/posts/:id', authMiddleware, async (req: AuthRequest, res) => {
+  if (!(await requireAdmin(req, res))) return;
 
-  const existing = getNoticePostRaw(param(req.params.id));
+  const existing = await getNoticePostRaw(param(req.params.id));
   if (!existing) {
     res.status(404).json({ message: '공지사항을 찾을 수 없습니다.' });
     return;
   }
 
-  const ok = deleteNoticePost(param(req.params.id), req.userId!);
+  const ok = await deleteNoticePost(param(req.params.id), req.userId!);
   if (!ok) {
     res.status(403).json({ message: '관리자만 삭제할 수 있습니다.' });
     return;

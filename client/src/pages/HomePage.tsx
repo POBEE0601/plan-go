@@ -1,3 +1,4 @@
+// 2026-08-31 랜딩: 공지·배포게시판 링크
 import { Link } from 'react-router-dom';
 import {
   Calendar,
@@ -25,6 +26,12 @@ export default function HomePage() {
               className="rounded-lg px-4 py-2 text-sm font-medium text-slate-600 transition hover:bg-slate-100"
             >
               공지사항
+            </Link>
+            <Link
+              to="/releases"
+              className="rounded-lg px-4 py-2 text-sm font-medium text-slate-600 transition hover:bg-slate-100"
+            >
+              배포게시판
             </Link>
             <Link
               to="/login"

@@ -87,14 +87,13 @@ const param = (value: string | string[]): string =>
 // 로그인 사용자만 접근
 router.use(authMiddleware);
 
-// 목록
-router.get('/posts', (req: AuthRequest, res) => {
-  res.json(listBoardPosts(req.userId!));
+// 2026-08-31 Supabase 비동기 조회
+router.get('/posts', async (req: AuthRequest, res) => {
+  res.json(await listBoardPosts(req.userId!));
 });
 
-// 상세
-router.get('/posts/:id', (req: AuthRequest, res) => {
-  const detail = getBoardPost(param(req.params.id), req.userId!);
+router.get('/posts/:id', async (req: AuthRequest, res) => {
+  const detail = await getBoardPost(param(req.params.id), req.userId!);
   if (!detail) {
     res.status(404).json({ message: '게시글을 찾을 수 없습니다.' });
     return;
@@ -104,7 +103,7 @@ router.get('/posts/:id', (req: AuthRequest, res) => {
 
 // 작성
 router.post('/posts', (req: AuthRequest, res) => {
-  upload.array('files', 8)(req, res, (err) => {
+  upload.array('files', 8)(req, res, async (err) => {
     if (err) {
       res.status(400).json({
         message: err instanceof Error ? err.message : '업로드에 실패했습니다.',
@@ -120,7 +119,7 @@ router.post('/posts', (req: AuthRequest, res) => {
       return;
     }
 
-    const post = createBoardPost(
+    const post = await createBoardPost(
       req.userId!,
       title,
       content,
@@ -132,7 +131,7 @@ router.post('/posts', (req: AuthRequest, res) => {
 
 // 수정 (작성자만)
 router.patch('/posts/:id', (req: AuthRequest, res) => {
-  upload.array('files', 8)(req, res, (err) => {
+  upload.array('files', 8)(req, res, async (err) => {
     if (err) {
       res.status(400).json({
         message: err instanceof Error ? err.message : '업로드에 실패했습니다.',
@@ -140,7 +139,7 @@ router.patch('/posts/:id', (req: AuthRequest, res) => {
       return;
     }
 
-    const existing = getBoardPostRaw(param(req.params.id));
+    const existing = await getBoardPostRaw(param(req.params.id));
     if (!existing) {
       removeFiles(toAttachments(req.files as Express.Multer.File[] | undefined));
       res.status(404).json({ message: '게시글을 찾을 수 없습니다.' });
@@ -186,7 +185,7 @@ router.patch('/posts/:id', (req: AuthRequest, res) => {
       ...toAttachments(req.files as Express.Multer.File[] | undefined),
     ];
 
-    const updated = updateBoardPost(param(req.params.id), req.userId!, {
+    const updated = await updateBoardPost(param(req.params.id), req.userId!, {
       title,
       content,
       attachments,
@@ -200,8 +199,8 @@ router.patch('/posts/:id', (req: AuthRequest, res) => {
 });
 
 // 삭제 (작성자만)
-router.delete('/posts/:id', (req: AuthRequest, res) => {
-  const existing = getBoardPostRaw(param(req.params.id));
+router.delete('/posts/:id', async (req: AuthRequest, res) => {
+  const existing = await getBoardPostRaw(param(req.params.id));
   if (!existing) {
     res.status(404).json({ message: '게시글을 찾을 수 없습니다.' });
     return;
@@ -211,7 +210,7 @@ router.delete('/posts/:id', (req: AuthRequest, res) => {
     return;
   }
 
-  const ok = deleteBoardPost(param(req.params.id), req.userId!);
+  const ok = await deleteBoardPost(param(req.params.id), req.userId!);
   if (!ok) {
     res.status(403).json({ message: '작성자만 삭제할 수 있습니다.' });
     return;
@@ -221,13 +220,13 @@ router.delete('/posts/:id', (req: AuthRequest, res) => {
 });
 
 // 댓글
-router.post('/posts/:id/comments', (req: AuthRequest, res) => {
+router.post('/posts/:id/comments', async (req: AuthRequest, res) => {
   const content = String(req.body.content ?? '').trim();
   if (!content) {
     res.status(400).json({ message: '댓글 내용을 입력해 주세요.' });
     return;
   }
-  const comment = addBoardComment(param(req.params.id), req.userId!, content);
+  const comment = await addBoardComment(param(req.params.id), req.userId!, content);
   if (!comment) {
     res.status(404).json({ message: '게시글을 찾을 수 없습니다.' });
     return;
@@ -235,8 +234,8 @@ router.post('/posts/:id/comments', (req: AuthRequest, res) => {
   res.status(201).json(comment);
 });
 
-router.delete('/comments/:id', (req: AuthRequest, res) => {
-  const ok = deleteBoardComment(param(req.params.id), req.userId!);
+router.delete('/comments/:id', async (req: AuthRequest, res) => {
+  const ok = await deleteBoardComment(param(req.params.id), req.userId!);
   if (!ok) {
     res.status(403).json({ message: '작성자만 삭제할 수 있습니다.' });
     return;
@@ -245,8 +244,8 @@ router.delete('/comments/:id', (req: AuthRequest, res) => {
 });
 
 // 좋아요 토글
-router.post('/posts/:id/like', (req: AuthRequest, res) => {
-  const result = toggleBoardLike(param(req.params.id), req.userId!);
+router.post('/posts/:id/like', async (req: AuthRequest, res) => {
+  const result = await toggleBoardLike(param(req.params.id), req.userId!);
   if (!result) {
     res.status(404).json({ message: '게시글을 찾을 수 없습니다.' });
     return;

@@ -1,4 +1,4 @@
-// 2026-08-31 헤더: 공지·게시판·게스트/로그인 대응
+// 2026-08-31 헤더: 공지·배포·게시판·게스트/로그인 대응
 import { Link, useNavigate } from 'react-router-dom';
 import {
   LogIn,
@@ -6,6 +6,7 @@ import {
   MapPin,
   Megaphone,
   MessageSquareText,
+  Rocket,
   User,
   UserPlus,
 } from 'lucide-react';
@@ -65,6 +66,13 @@ export default function Header({ onInvite, roleLabel }: HeaderProps) {
               <Megaphone className="h-4 w-4" />
               공지사항
             </Link>
+            <Link
+              to="/releases"
+              className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-50"
+            >
+              <Rocket className="h-4 w-4" />
+              배포게시판
+            </Link>
             {isAuthenticated && (
               <Link
                 to="/board"
@@ -84,6 +92,13 @@ export default function Header({ onInvite, roleLabel }: HeaderProps) {
           >
             <Megaphone className="h-3.5 w-3.5" />
             공지
+          </Link>
+          <Link
+            to="/releases"
+            className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs text-slate-600 sm:hidden"
+          >
+            <Rocket className="h-3.5 w-3.5" />
+            배포
           </Link>
           {roleLabel && (
             <span className="hidden rounded-full bg-slate-100 px-2.5 py-1 text-xs text-slate-600 sm:inline">

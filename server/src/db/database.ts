@@ -1,13 +1,10 @@
-// 2026-08-31 Place·Day·Member 지원 DB 레이어
-import fs from 'fs';
-import path from 'path';
+// 2026-08-31 로컬 JSON DB → Supabase Postgres
 import bcrypt from 'bcryptjs';
-import { fileURLToPath } from 'url';
+import type { PoolClient } from 'pg';
 import type {
   BoardAttachment,
   BoardComment,
   BoardCommentPublic,
-  BoardLike,
   BoardPost,
   BoardPostPublic,
 } from '../types/board.js';
@@ -28,136 +25,28 @@ import type {
 import type { User, UserPublic } from '../types/user.js';
 import { isAdminEmail } from '../utils/admin.js';
 import { getDayCount } from '../utils/days.js';
-
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const dataDir = path.join(__dirname, '../../data');
-const dbPath = path.join(dataDir, 'db.json');
-
-interface DbData {
-  users: User[];
-  travelPlans: TravelPlan[];
-  // 2026-08-31 고객게시판
-  boardPosts: BoardPost[];
-  boardComments: BoardComment[];
-  boardLikes: BoardLike[];
-  // 2026-08-31 공지사항
-  noticePosts: NoticePost[];
-  // 2026-08-31 배포게시판
-  releasePosts: ReleasePost[];
-}
-
-const defaultData = (): DbData => ({
-  users: [],
-  travelPlans: [],
-  boardPosts: [],
-  boardComments: [],
-  boardLikes: [],
-  noticePosts: [],
-  releasePosts: [],
-});
-
-const normalizePlan = (plan: TravelPlan): TravelPlan => {
-  const places = plan.places ?? [];
-  const dayAssignments = plan.dayAssignments ?? [];
-  let members = plan.members ?? [];
-
-  // 소유자가 members에 없으면 추가
-  if (!members.some((m) => m.role === 'owner' && m.userId === plan.userId)) {
-    members = [
-      {
-        id: `owner-${plan.id}`,
-        planId: plan.id,
-        userId: plan.userId,
-        email: '',
-        name: 'Owner',
-        role: 'owner',
-        status: 'accepted',
-        createdAt: new Date().toISOString(),
-      },
-      ...members.filter((m) => m.role !== 'owner' || m.userId !== plan.userId),
-    ];
-  }
-
-  // 레거시 schedules → places 마이그레이션
-  if ((!places.length) && plan.schedules?.length) {
-    const migratedPlaces: Place[] = [];
-    const migratedDays: DayAssignment[] = [];
-    const dayCount = getDayCount(plan.startDate, plan.endDate);
-
-    plan.schedules.forEach((s, idx) => {
-      const placeId = `migrated-${s.id}`;
-      migratedPlaces.push({
-        id: placeId,
-        planId: plan.id,
-        name: s.title,
-        address: s.location,
-        lat: s.lat,
-        lng: s.lng,
-        category: 'other',
-        memo: s.memo,
-      });
-
-      const start = new Date(`${plan.startDate}T00:00:00`);
-      const date = new Date(`${s.date}T00:00:00`);
-      let dayIndex =
-        Math.round((date.getTime() - start.getTime()) / 86400000) + 1;
-      if (Number.isNaN(dayIndex) || dayIndex < 1) dayIndex = 1;
-      if (dayIndex > dayCount) dayIndex = dayCount;
-
-      migratedDays.push({
-        id: `day-${s.id}`,
-        planId: plan.id,
-        placeId,
-        dayIndex,
-        order: idx,
-        time: s.time,
-        memo: s.memo,
-      });
-    });
-
-    return {
-      ...plan,
-      places: migratedPlaces,
-      dayAssignments: migratedDays,
-      members,
-      schedules: undefined,
-    };
-  }
-
-  return { ...plan, places, dayAssignments, members, schedules: undefined };
-};
-
-const ensureDataFile = (): void => {
-  if (!fs.existsSync(dataDir)) {
-    fs.mkdirSync(dataDir, { recursive: true });
-  }
-  if (!fs.existsSync(dbPath)) {
-    fs.writeFileSync(dbPath, JSON.stringify(defaultData(), null, 2), 'utf-8');
-  }
-};
-
-const readDb = (): DbData => {
-  ensureDataFile();
-  const raw = fs.readFileSync(dbPath, 'utf-8');
-  const data = JSON.parse(raw) as DbData;
-  return {
-    users: data.users ?? [],
-    travelPlans: (data.travelPlans ?? []).map(normalizePlan),
-    boardPosts: data.boardPosts ?? [],
-    boardComments: data.boardComments ?? [],
-    boardLikes: data.boardLikes ?? [],
-    noticePosts: data.noticePosts ?? [],
-    releasePosts: data.releasePosts ?? [],
-  };
-};
-
-const writeDb = (data: DbData): void => {
-  ensureDataFile();
-  fs.writeFileSync(dbPath, JSON.stringify(data, null, 2), 'utf-8');
-};
+import { pool } from './pool.js';
 
 export const generateId = (): string =>
   `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+
+const asIso = (value: unknown): string => {
+  if (value instanceof Date) return value.toISOString();
+  if (typeof value === 'string') return value;
+  return new Date().toISOString();
+};
+
+const parseJson = <T>(value: unknown, fallback: T): T => {
+  if (value == null) return fallback;
+  if (typeof value === 'string') {
+    try {
+      return JSON.parse(value) as T;
+    } catch {
+      return fallback;
+    }
+  }
+  return value as T;
+};
 
 const toPublicUser = (user: User): UserPublic => ({
   id: user.id,
@@ -166,9 +55,115 @@ const toPublicUser = (user: User): UserPublic => ({
   isAdmin: isAdminEmail(user.email),
 });
 
-export const isAdminUserId = (userId: string): boolean => {
-  const user = findUserById(userId);
-  return isAdminEmail(user?.email);
+const mapUser = (row: Record<string, unknown>): User => ({
+  id: String(row.id),
+  email: String(row.email),
+  passwordHash: String(row.password_hash),
+  name: String(row.name),
+  createdAt: asIso(row.created_at),
+});
+
+const mapPlace = (row: Record<string, unknown>): Place => ({
+  id: String(row.id),
+  planId: String(row.plan_id),
+  googlePlaceId: row.google_place_id ? String(row.google_place_id) : undefined,
+  name: String(row.name),
+  address: String(row.address ?? ''),
+  lat: Number(row.lat),
+  lng: Number(row.lng),
+  category: (row.category as Place['category']) ?? 'other',
+  rating: row.rating == null ? undefined : Number(row.rating),
+  photoUrl: row.photo_url ? String(row.photo_url) : undefined,
+  memo: row.memo ? String(row.memo) : undefined,
+  types: parseJson<string[] | undefined>(row.types, undefined),
+});
+
+const mapAssignment = (row: Record<string, unknown>): DayAssignment => ({
+  id: String(row.id),
+  planId: String(row.plan_id),
+  placeId: String(row.place_id),
+  dayIndex: Number(row.day_index),
+  order: Number(row.sort_order),
+  time: row.time ? String(row.time) : undefined,
+  memo: row.memo ? String(row.memo) : undefined,
+});
+
+const mapMember = (row: Record<string, unknown>): PlanMember => ({
+  id: String(row.id),
+  planId: String(row.plan_id),
+  userId: String(row.user_id ?? ''),
+  email: String(row.email ?? ''),
+  name: String(row.name ?? ''),
+  role: row.role as MemberRole,
+  status: row.status as PlanMember['status'],
+  inviteToken: row.invite_token ? String(row.invite_token) : undefined,
+  createdAt: asIso(row.created_at),
+});
+
+const mapPlanRow = (row: Record<string, unknown>): Omit<
+  TravelPlan,
+  'places' | 'dayAssignments' | 'members'
+> => ({
+  id: String(row.id),
+  userId: String(row.user_id),
+  title: String(row.title),
+  startDate: String(row.start_date),
+  endDate: String(row.end_date),
+  regionName: row.region_name ? String(row.region_name) : undefined,
+  regionLat: row.region_lat == null ? undefined : Number(row.region_lat),
+  regionLng: row.region_lng == null ? undefined : Number(row.region_lng),
+});
+
+const mapAttachments = (value: unknown): BoardAttachment[] =>
+  parseJson<BoardAttachment[]>(value, []);
+
+const mapBoardPost = (row: Record<string, unknown>): BoardPost => ({
+  id: String(row.id),
+  authorId: String(row.author_id),
+  title: String(row.title),
+  content: String(row.content),
+  attachments: mapAttachments(row.attachments),
+  createdAt: asIso(row.created_at),
+  updatedAt: asIso(row.updated_at),
+});
+
+const mapNoticePost = (row: Record<string, unknown>): NoticePost => ({
+  id: String(row.id),
+  authorId: String(row.author_id),
+  title: String(row.title),
+  content: String(row.content),
+  attachments: mapAttachments(row.attachments),
+  viewCount: Number(row.view_count ?? 0),
+  createdAt: asIso(row.created_at),
+  updatedAt: asIso(row.updated_at),
+});
+
+const mapReleasePost = (row: Record<string, unknown>): ReleasePost => ({
+  id: String(row.id),
+  authorId: String(row.author_id),
+  title: String(row.title),
+  content: String(row.content),
+  status: row.status as DeployStatus,
+  releasedAt: asIso(row.released_at),
+  attachments: mapAttachments(row.attachments),
+  viewCount: Number(row.view_count ?? 0),
+  createdAt: asIso(row.created_at),
+  updatedAt: asIso(row.updated_at),
+});
+
+const withTx = async <T>(fn: (client: PoolClient) => Promise<T>): Promise<T> => {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const result = await fn(client);
+    await client.query('COMMIT');
+    return result;
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
 };
 
 const enrichMember = (member: PlanMember, users: User[]): PlanMember => {
@@ -182,62 +177,86 @@ const enrichMember = (member: PlanMember, users: User[]): PlanMember => {
   };
 };
 
-const enrichPlan = (plan: TravelPlan, users: User[]): TravelPlan => ({
-  ...normalizePlan(plan),
-  members: normalizePlan(plan).members.map((m) => enrichMember(m, users)),
-});
-
-// --- User ---
-
-export const findUserByEmail = (email: string): User | null => {
-  const db = readDb();
-  return db.users.find((u) => u.email === email.toLowerCase()) ?? null;
+const loadUsersByIds = async (ids: string[]): Promise<User[]> => {
+  const unique = [...new Set(ids.filter(Boolean))];
+  if (!unique.length) return [];
+  const { rows } = await pool.query(
+    `SELECT * FROM users WHERE id = ANY($1::text[])`,
+    [unique],
+  );
+  return rows.map((r) => mapUser(r as Record<string, unknown>));
 };
 
-export const findUserById = (id: string): User | null => {
-  const db = readDb();
-  return db.users.find((u) => u.id === id) ?? null;
+const assemblePlans = async (
+  planRows: Record<string, unknown>[],
+): Promise<TravelPlan[]> => {
+  if (!planRows.length) return [];
+  const ids = planRows.map((r) => String(r.id));
+
+  const [placeRes, dayRes, memberRes] = await Promise.all([
+    pool.query(`SELECT * FROM places WHERE plan_id = ANY($1::text[])`, [ids]),
+    pool.query(
+      `SELECT * FROM day_assignments WHERE plan_id = ANY($1::text[]) ORDER BY day_index, sort_order`,
+      [ids],
+    ),
+    pool.query(`SELECT * FROM plan_members WHERE plan_id = ANY($1::text[])`, [
+      ids,
+    ]),
+  ]);
+
+  const places = placeRes.rows.map((r) => mapPlace(r as Record<string, unknown>));
+  const days = dayRes.rows.map((r) =>
+    mapAssignment(r as Record<string, unknown>),
+  );
+  const members = memberRes.rows.map((r) =>
+    mapMember(r as Record<string, unknown>),
+  );
+
+  const userIds = [
+    ...planRows.map((r) => String(r.user_id)),
+    ...members.map((m) => m.userId),
+  ];
+  const users = await loadUsersByIds(userIds);
+
+  return planRows.map((row) => {
+    const base = mapPlanRow(row);
+    const planMembers = members.filter((m) => m.planId === base.id);
+    let nextMembers = planMembers;
+
+    if (!nextMembers.some((m) => m.role === 'owner' && m.userId === base.userId)) {
+      nextMembers = [
+        {
+          id: `owner-${base.id}`,
+          planId: base.id,
+          userId: base.userId,
+          email: '',
+          name: 'Owner',
+          role: 'owner',
+          status: 'accepted',
+          createdAt: new Date().toISOString(),
+        },
+        ...nextMembers.filter(
+          (m) => m.role !== 'owner' || m.userId !== base.userId,
+        ),
+      ];
+    }
+
+    return {
+      ...base,
+      places: places.filter((p) => p.planId === base.id),
+      dayAssignments: days.filter((d) => d.planId === base.id),
+      members: nextMembers.map((m) => enrichMember(m, users)),
+    };
+  });
 };
 
-export const createUser = async (
-  email: string,
-  password: string,
-  name: string,
-): Promise<UserPublic> => {
-  const db = readDb();
-  const normalizedEmail = email.toLowerCase().trim();
-
-  if (db.users.some((u) => u.email === normalizedEmail)) {
-    throw new Error('이미 사용 중인 이메일입니다.');
-  }
-
-  const passwordHash = await bcrypt.hash(password, 10);
-  const user: User = {
-    id: generateId(),
-    email: normalizedEmail,
-    passwordHash,
-    name: name.trim(),
-    createdAt: new Date().toISOString(),
-  };
-
-  db.users.push(user);
-  writeDb(db);
-  return toPublicUser(user);
-};
-
-export const validateUser = async (
-  email: string,
-  password: string,
-): Promise<UserPublic | null> => {
-  const user = findUserByEmail(email);
-  if (!user) return null;
-  const valid = await bcrypt.compare(password, user.passwordHash);
-  return valid ? toPublicUser(user) : null;
-};
-
-export const getUserPublic = (id: string): UserPublic | null => {
-  const user = findUserById(id);
-  return user ? toPublicUser(user) : null;
+const loadPlan = async (id: string): Promise<TravelPlan | null> => {
+  const { rows } = await pool.query(`SELECT * FROM travel_plans WHERE id = $1`, [
+    id,
+  ]);
+  if (!rows.length) return null;
+  const [plan] = await assemblePlans([rows[0] as Record<string, unknown>]);
+  return plan ?? null;
 };
 
 // --- Access ---
@@ -265,319 +284,472 @@ export const canWrite = (plan: TravelPlan, userId: string): boolean => {
 export const canManage = (plan: TravelPlan, userId: string): boolean =>
   getMemberRole(plan, userId) === 'owner';
 
+const requireWritablePlan = async (
+  planId: string,
+  userId: string,
+): Promise<TravelPlan | null> => {
+  const plan = await loadPlan(planId);
+  if (!plan || !canWrite(plan, userId)) return null;
+  return plan;
+};
+
+// --- User ---
+
+export const findUserByEmail = async (email: string): Promise<User | null> => {
+  const { rows } = await pool.query(`SELECT * FROM users WHERE email = $1`, [
+    email.toLowerCase(),
+  ]);
+  return rows[0] ? mapUser(rows[0] as Record<string, unknown>) : null;
+};
+
+export const findUserById = async (id: string): Promise<User | null> => {
+  const { rows } = await pool.query(`SELECT * FROM users WHERE id = $1`, [id]);
+  return rows[0] ? mapUser(rows[0] as Record<string, unknown>) : null;
+};
+
+export const createUser = async (
+  email: string,
+  password: string,
+  name: string,
+): Promise<UserPublic> => {
+  const normalizedEmail = email.toLowerCase().trim();
+  const existing = await findUserByEmail(normalizedEmail);
+  if (existing) {
+    throw new Error('이미 사용 중인 이메일입니다.');
+  }
+
+  const passwordHash = await bcrypt.hash(password, 10);
+  const user: User = {
+    id: generateId(),
+    email: normalizedEmail,
+    passwordHash,
+    name: name.trim(),
+    createdAt: new Date().toISOString(),
+  };
+
+  try {
+    await pool.query(
+      `INSERT INTO users (id, email, password_hash, name, created_at)
+       VALUES ($1, $2, $3, $4, $5)`,
+      [user.id, user.email, user.passwordHash, user.name, user.createdAt],
+    );
+  } catch (err) {
+    const code = (err as { code?: string }).code;
+    if (code === '23505') throw new Error('이미 사용 중인 이메일입니다.');
+    throw err;
+  }
+
+  return toPublicUser(user);
+};
+
+export const validateUser = async (
+  email: string,
+  password: string,
+): Promise<UserPublic | null> => {
+  const user = await findUserByEmail(email);
+  if (!user) return null;
+  const valid = await bcrypt.compare(password, user.passwordHash);
+  return valid ? toPublicUser(user) : null;
+};
+
+export const getUserPublic = async (id: string): Promise<UserPublic | null> => {
+  const user = await findUserById(id);
+  return user ? toPublicUser(user) : null;
+};
+
+export const isAdminUserId = async (userId: string): Promise<boolean> => {
+  const user = await findUserById(userId);
+  return isAdminEmail(user?.email);
+};
+
 // --- Travel Plan ---
 
-export const getAccessiblePlans = (userId: string): TravelPlan[] => {
-  const db = readDb();
-  return db.travelPlans
-    .filter((p) => canRead(p, userId))
-    .map((p) => enrichPlan(p, db.users))
-    .sort((a, b) => b.id.localeCompare(a.id));
+export const getAccessiblePlans = async (
+  userId: string,
+): Promise<TravelPlan[]> => {
+  const { rows } = await pool.query(
+    `SELECT DISTINCT p.*
+     FROM travel_plans p
+     LEFT JOIN plan_members m ON m.plan_id = p.id
+     WHERE p.user_id = $1
+        OR (m.user_id = $1 AND m.status = 'accepted')
+     ORDER BY p.id DESC`,
+    [userId],
+  );
+  return assemblePlans(rows as Record<string, unknown>[]);
 };
 
-export const getTravelPlanById = (
+export const getTravelPlanById = async (
   id: string,
   userId?: string,
-): TravelPlan | null => {
-  const db = readDb();
-  const plan = db.travelPlans.find((p) => p.id === id);
+): Promise<TravelPlan | null> => {
+  const plan = await loadPlan(id);
   if (!plan) return null;
   if (userId && !canRead(plan, userId)) return null;
-  return enrichPlan(plan, db.users);
+  return plan;
 };
 
-export const createTravelPlan = (
+export const createTravelPlan = async (
   userId: string,
   title: string,
   startDate: string,
   endDate: string,
   region?: { regionName: string; regionLat: number; regionLng: number },
-): TravelPlan => {
-  const db = readDb();
-  const user = db.users.find((u) => u.id === userId);
+): Promise<TravelPlan> => {
+  const user = await findUserById(userId);
   const id = generateId();
+  const memberId = generateId();
+  const now = new Date().toISOString();
 
-  const newPlan: TravelPlan = {
-    id,
-    userId,
-    title,
-    startDate,
-    endDate,
-    regionName: region?.regionName,
-    regionLat: region?.regionLat,
-    regionLng: region?.regionLng,
-    places: [],
-    dayAssignments: [],
-    members: [
-      {
-        id: generateId(),
-        planId: id,
+  await withTx(async (client) => {
+    await client.query(
+      `INSERT INTO travel_plans
+        (id, user_id, title, start_date, end_date, region_name, region_lat, region_lng)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+      [
+        id,
         userId,
-        email: user?.email ?? '',
-        name: user?.name ?? 'Owner',
-        role: 'owner',
-        status: 'accepted',
-        createdAt: new Date().toISOString(),
-      },
-    ],
-  };
+        title,
+        startDate,
+        endDate,
+        region?.regionName ?? null,
+        region?.regionLat ?? null,
+        region?.regionLng ?? null,
+      ],
+    );
+    await client.query(
+      `INSERT INTO plan_members
+        (id, plan_id, user_id, email, name, role, status, created_at)
+       VALUES ($1, $2, $3, $4, $5, 'owner', 'accepted', $6)`,
+      [memberId, id, userId, user?.email ?? '', user?.name ?? 'Owner', now],
+    );
+  });
 
-  db.travelPlans.unshift(newPlan);
-  writeDb(db);
-  return enrichPlan(newPlan, db.users);
+  const plan = await loadPlan(id);
+  if (!plan) throw new Error('여행 계획 생성에 실패했습니다.');
+  return plan;
 };
 
-export const deleteTravelPlan = (id: string, userId: string): boolean => {
-  const db = readDb();
-  const index = db.travelPlans.findIndex((p) => p.id === id);
-  if (index === -1) return false;
-  if (!canManage(db.travelPlans[index], userId)) return false;
-  db.travelPlans.splice(index, 1);
-  writeDb(db);
-  return true;
-};
-
-const updatePlan = (
-  planId: string,
+export const deleteTravelPlan = async (
+  id: string,
   userId: string,
-  mutator: (plan: TravelPlan) => void,
-  writeRequired = true,
-): TravelPlan | null => {
-  const db = readDb();
-  const plan = db.travelPlans.find((p) => p.id === planId);
-  if (!plan) return null;
-  if (writeRequired && !canWrite(plan, userId)) return null;
-  if (!writeRequired && !canRead(plan, userId)) return null;
-
-  mutator(plan);
-  writeDb(db);
-  return enrichPlan(plan, db.users);
+): Promise<boolean> => {
+  const plan = await loadPlan(id);
+  if (!plan || !canManage(plan, userId)) return false;
+  await pool.query(`DELETE FROM travel_plans WHERE id = $1`, [id]);
+  return true;
 };
 
 // --- Places ---
 
-export const addPlace = (
+export const addPlace = async (
   planId: string,
   userId: string,
   body: CreatePlaceBody,
-): Place | null => {
-  let created: Place | null = null;
-
-  const plan = updatePlan(planId, userId, (p) => {
-    if (
-      body.googlePlaceId &&
-      p.places.some((pl) => pl.googlePlaceId === body.googlePlaceId)
-    ) {
-      throw new Error('이미 등록된 장소입니다.');
-    }
-
-    created = {
-      id: generateId(),
-      planId,
-      googlePlaceId: body.googlePlaceId,
-      name: body.name.trim(),
-      address: body.address?.trim() ?? '',
-      lat: body.lat,
-      lng: body.lng,
-      category: body.category ?? 'other',
-      rating: body.rating,
-      photoUrl: body.photoUrl,
-      memo: body.memo,
-      types: body.types,
-    };
-    p.places.push(created);
-  });
-
+): Promise<Place | null> => {
+  const plan = await requireWritablePlan(planId, userId);
   if (!plan) return null;
+
+  if (
+    body.googlePlaceId &&
+    plan.places.some((pl) => pl.googlePlaceId === body.googlePlaceId)
+  ) {
+    throw new Error('이미 등록된 장소입니다.');
+  }
+
+  const created: Place = {
+    id: generateId(),
+    planId,
+    googlePlaceId: body.googlePlaceId,
+    name: body.name.trim(),
+    address: body.address?.trim() ?? '',
+    lat: body.lat,
+    lng: body.lng,
+    category: body.category ?? 'other',
+    rating: body.rating,
+    photoUrl: body.photoUrl,
+    memo: body.memo,
+    types: body.types,
+  };
+
+  await pool.query(
+    `INSERT INTO places
+      (id, plan_id, google_place_id, name, address, lat, lng, category, rating, photo_url, memo, types)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
+    [
+      created.id,
+      created.planId,
+      created.googlePlaceId ?? null,
+      created.name,
+      created.address,
+      created.lat,
+      created.lng,
+      created.category,
+      created.rating ?? null,
+      created.photoUrl ?? null,
+      created.memo ?? null,
+      created.types ? JSON.stringify(created.types) : null,
+    ],
+  );
+
   return created;
 };
 
-export const updatePlace = (
+export const updatePlace = async (
   planId: string,
   userId: string,
   placeId: string,
   updates: Partial<CreatePlaceBody>,
-): Place | null => {
-  let updated: Place | null = null;
-  const plan = updatePlan(planId, userId, (p) => {
-    const idx = p.places.findIndex((pl) => pl.id === placeId);
-    if (idx === -1) throw new Error('장소를 찾을 수 없습니다.');
-    p.places[idx] = { ...p.places[idx], ...updates, id: placeId, planId };
-    updated = p.places[idx];
-  });
+): Promise<Place | null> => {
+  const plan = await requireWritablePlan(planId, userId);
   if (!plan) return null;
-  return updated;
+
+  const current = plan.places.find((pl) => pl.id === placeId);
+  if (!current) throw new Error('장소를 찾을 수 없습니다.');
+
+  const next: Place = {
+    ...current,
+    ...updates,
+    id: placeId,
+    planId,
+    name: updates.name != null ? updates.name : current.name,
+    address: updates.address != null ? updates.address : current.address,
+  };
+
+  await pool.query(
+    `UPDATE places SET
+      google_place_id = $1, name = $2, address = $3, lat = $4, lng = $5,
+      category = $6, rating = $7, photo_url = $8, memo = $9, types = $10
+     WHERE id = $11 AND plan_id = $12`,
+    [
+      next.googlePlaceId ?? null,
+      next.name,
+      next.address,
+      next.lat,
+      next.lng,
+      next.category,
+      next.rating ?? null,
+      next.photoUrl ?? null,
+      next.memo ?? null,
+      next.types ? JSON.stringify(next.types) : null,
+      placeId,
+      planId,
+    ],
+  );
+
+  return next;
 };
 
-export const deletePlace = (
+export const deletePlace = async (
   planId: string,
   userId: string,
   placeId: string,
-): boolean => {
-  const plan = updatePlan(planId, userId, (p) => {
-    const before = p.places.length;
-    p.places = p.places.filter((pl) => pl.id !== placeId);
-    p.dayAssignments = p.dayAssignments.filter((d) => d.placeId !== placeId);
-    if (p.places.length === before) throw new Error('장소를 찾을 수 없습니다.');
-  });
-  return plan != null;
+): Promise<boolean> => {
+  const plan = await requireWritablePlan(planId, userId);
+  if (!plan) return false;
+  if (!plan.places.some((pl) => pl.id === placeId)) {
+    throw new Error('장소를 찾을 수 없습니다.');
+  }
+  await pool.query(`DELETE FROM places WHERE id = $1 AND plan_id = $2`, [
+    placeId,
+    planId,
+  ]);
+  return true;
 };
 
 // --- Day assignments ---
 
-export const assignPlaceToDay = (
+export const assignPlaceToDay = async (
   planId: string,
   userId: string,
   placeId: string,
   dayIndex: number,
   time?: string,
   memo?: string,
-): DayAssignment | null => {
-  let created: DayAssignment | null = null;
-
-  const plan = updatePlan(planId, userId, (p) => {
-    const place = p.places.find((pl) => pl.id === placeId);
-    if (!place) throw new Error('장소를 찾을 수 없습니다.');
-
-    const maxDay = getDayCount(p.startDate, p.endDate);
-    if (dayIndex < 1 || dayIndex > maxDay) {
-      throw new Error(`dayIndex는 1~${maxDay} 사이여야 합니다.`);
-    }
-
-    const sameDay = p.dayAssignments.filter((d) => d.dayIndex === dayIndex);
-    created = {
-      id: generateId(),
-      planId,
-      placeId,
-      dayIndex,
-      order: sameDay.length,
-      time,
-      memo,
-    };
-    p.dayAssignments.push(created);
-  });
-
+): Promise<DayAssignment | null> => {
+  const plan = await requireWritablePlan(planId, userId);
   if (!plan) return null;
+
+  if (!plan.places.some((pl) => pl.id === placeId)) {
+    throw new Error('장소를 찾을 수 없습니다.');
+  }
+
+  const maxDay = getDayCount(plan.startDate, plan.endDate);
+  if (dayIndex < 1 || dayIndex > maxDay) {
+    throw new Error(`dayIndex는 1~${maxDay} 사이여야 합니다.`);
+  }
+
+  const sameDay = plan.dayAssignments.filter((d) => d.dayIndex === dayIndex);
+  const created: DayAssignment = {
+    id: generateId(),
+    planId,
+    placeId,
+    dayIndex,
+    order: sameDay.length,
+    time,
+    memo,
+  };
+
+  await pool.query(
+    `INSERT INTO day_assignments
+      (id, plan_id, place_id, day_index, sort_order, time, memo)
+     VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+    [
+      created.id,
+      created.planId,
+      created.placeId,
+      created.dayIndex,
+      created.order,
+      created.time ?? null,
+      created.memo ?? null,
+    ],
+  );
+
   return created;
 };
 
-export const updateAssignment = (
+export const updateAssignment = async (
   planId: string,
   userId: string,
   assignmentId: string,
   updates: { dayIndex?: number; order?: number; time?: string; memo?: string },
-): DayAssignment | null => {
-  let updated: DayAssignment | null = null;
+): Promise<DayAssignment | null> => {
+  const plan = await requireWritablePlan(planId, userId);
+  if (!plan) return null;
 
-  const plan = updatePlan(planId, userId, (p) => {
-    const idx = p.dayAssignments.findIndex((d) => d.id === assignmentId);
-    if (idx === -1) throw new Error('배정을 찾을 수 없습니다.');
+  const current = plan.dayAssignments.find((d) => d.id === assignmentId);
+  if (!current) throw new Error('배정을 찾을 수 없습니다.');
 
-    const current = p.dayAssignments[idx];
-    const nextDay = updates.dayIndex ?? current.dayIndex;
-    const maxDay = getDayCount(p.startDate, p.endDate);
-    if (nextDay < 1 || nextDay > maxDay) {
-      throw new Error(`dayIndex는 1~${maxDay} 사이여야 합니다.`);
-    }
+  const nextDay = updates.dayIndex ?? current.dayIndex;
+  const maxDay = getDayCount(plan.startDate, plan.endDate);
+  if (nextDay < 1 || nextDay > maxDay) {
+    throw new Error(`dayIndex는 1~${maxDay} 사이여야 합니다.`);
+  }
 
-    p.dayAssignments[idx] = {
-      ...current,
-      dayIndex: nextDay,
-      order: updates.order ?? current.order,
-      time: updates.time ?? current.time,
-      memo: updates.memo ?? current.memo,
-    };
-    updated = p.dayAssignments[idx];
+  let next: DayAssignment = {
+    ...current,
+    dayIndex: nextDay,
+    order: updates.order ?? current.order,
+    time: updates.time ?? current.time,
+    memo: updates.memo ?? current.memo,
+  };
 
-    // 같은 Day 내 order 재정렬
-    const dayItems = p.dayAssignments
-      .filter((d) => d.dayIndex === nextDay)
-      .sort((a, b) => a.order - b.order);
+  await withTx(async (client) => {
+    await client.query(
+      `UPDATE day_assignments
+       SET day_index = $1, sort_order = $2, time = $3, memo = $4
+       WHERE id = $5 AND plan_id = $6`,
+      [
+        next.dayIndex,
+        next.order,
+        next.time ?? null,
+        next.memo ?? null,
+        assignmentId,
+        planId,
+      ],
+    );
 
     if (updates.order != null) {
-      const moving = dayItems.find((d) => d.id === assignmentId)!;
+      const { rows } = await client.query(
+        `SELECT * FROM day_assignments
+         WHERE plan_id = $1 AND day_index = $2
+         ORDER BY sort_order`,
+        [planId, nextDay],
+      );
+      const dayItems = rows.map((r) =>
+        mapAssignment(r as Record<string, unknown>),
+      );
+      const moving = dayItems.find((d) => d.id === assignmentId);
+      if (!moving) return;
       const others = dayItems.filter((d) => d.id !== assignmentId);
-      others.splice(Math.min(updates.order, others.length), 0, moving);
-      others.forEach((item, i) => {
-        const target = p.dayAssignments.find((d) => d.id === item.id)!;
-        target.order = i;
-        if (item.id === assignmentId) updated = target;
-      });
+      others.splice(Math.min(updates.order!, others.length), 0, moving);
+      for (let i = 0; i < others.length; i += 1) {
+        await client.query(
+          `UPDATE day_assignments SET sort_order = $1 WHERE id = $2`,
+          [i, others[i].id],
+        );
+        if (others[i].id === assignmentId) {
+          next = { ...others[i], dayIndex: nextDay, order: i };
+        }
+      }
     }
   });
 
-  if (!plan) return null;
-  return updated;
+  return next;
 };
 
-export const removeAssignment = (
+export const removeAssignment = async (
   planId: string,
   userId: string,
   assignmentId: string,
-): boolean => {
-  const plan = updatePlan(planId, userId, (p) => {
-    const before = p.dayAssignments.length;
-    p.dayAssignments = p.dayAssignments.filter((d) => d.id !== assignmentId);
-    if (p.dayAssignments.length === before) {
-      throw new Error('배정을 찾을 수 없습니다.');
-    }
-  });
-  return plan != null;
+): Promise<boolean> => {
+  const plan = await requireWritablePlan(planId, userId);
+  if (!plan) return false;
+  if (!plan.dayAssignments.some((d) => d.id === assignmentId)) {
+    throw new Error('배정을 찾을 수 없습니다.');
+  }
+  await pool.query(
+    `DELETE FROM day_assignments WHERE id = $1 AND plan_id = $2`,
+    [assignmentId, planId],
+  );
+  return true;
 };
 
-export const reorderDay = (
+export const reorderDay = async (
   planId: string,
   userId: string,
   dayIndex: number,
   orderedAssignmentIds: string[],
-): DayAssignment[] | null => {
-  let result: DayAssignment[] | null = null;
+): Promise<DayAssignment[] | null> => {
+  const plan = await requireWritablePlan(planId, userId);
+  if (!plan) return null;
 
-  const plan = updatePlan(planId, userId, (p) => {
-    orderedAssignmentIds.forEach((id, order) => {
-      const item = p.dayAssignments.find((d) => d.id === id);
-      if (item) {
-        item.dayIndex = dayIndex;
-        item.order = order;
-      }
-    });
-    result = p.dayAssignments
-      .filter((d) => d.dayIndex === dayIndex)
-      .sort((a, b) => a.order - b.order);
+  await withTx(async (client) => {
+    for (let order = 0; order < orderedAssignmentIds.length; order += 1) {
+      await client.query(
+        `UPDATE day_assignments
+         SET day_index = $1, sort_order = $2
+         WHERE id = $3 AND plan_id = $4`,
+        [dayIndex, order, orderedAssignmentIds[order], planId],
+      );
+    }
   });
 
-  if (!plan) return null;
-  return result;
+  const { rows } = await pool.query(
+    `SELECT * FROM day_assignments
+     WHERE plan_id = $1 AND day_index = $2
+     ORDER BY sort_order`,
+    [planId, dayIndex],
+  );
+  return rows.map((r) => mapAssignment(r as Record<string, unknown>));
 };
 
 // --- Invites ---
 
-export const inviteByEmail = (
+export const inviteByEmail = async (
   planId: string,
   ownerId: string,
   email: string,
   role: 'editor' | 'viewer',
-): PlanMember | null => {
-  let created: PlanMember | null = null;
-  const normalized = email.toLowerCase().trim();
-
-  const db = readDb();
-  const plan = db.travelPlans.find((p) => p.id === planId);
+): Promise<PlanMember | null> => {
+  const plan = await loadPlan(planId);
   if (!plan || !canManage(plan, ownerId)) return null;
 
+  const normalized = email.toLowerCase().trim();
   if (plan.members.some((m) => m.email === normalized && m.status === 'accepted')) {
     throw new Error('이미 참여 중인 멤버입니다.');
   }
 
-  const existingUser = db.users.find((u) => u.email === normalized);
+  const existingUser = await findUserByEmail(normalized);
   const inviteToken = generateId();
 
-  // pending 중복 제거
-  plan.members = plan.members.filter(
-    (m) => !(m.email === normalized && m.status === 'pending'),
+  await pool.query(
+    `DELETE FROM plan_members
+     WHERE plan_id = $1 AND email = $2 AND status = 'pending'`,
+    [planId, normalized],
   );
 
-  created = {
+  const created: PlanMember = {
     id: generateId(),
     planId,
     userId: existingUser?.id ?? '',
@@ -588,23 +760,36 @@ export const inviteByEmail = (
     inviteToken,
     createdAt: new Date().toISOString(),
   };
-  plan.members.push(created);
-  writeDb(db);
+
+  await pool.query(
+    `INSERT INTO plan_members
+      (id, plan_id, user_id, email, name, role, status, invite_token, created_at)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+    [
+      created.id,
+      created.planId,
+      created.userId,
+      created.email,
+      created.name,
+      created.role,
+      created.status,
+      created.inviteToken,
+      created.createdAt,
+    ],
+  );
+
   return created;
 };
 
-export const createInviteLink = (
+export const createInviteLink = async (
   planId: string,
   ownerId: string,
   role: 'editor' | 'viewer',
-): PlanMember | null => {
-  let created: PlanMember | null = null;
-
-  const db = readDb();
-  const plan = db.travelPlans.find((p) => p.id === planId);
+): Promise<PlanMember | null> => {
+  const plan = await loadPlan(planId);
   if (!plan || !canManage(plan, ownerId)) return null;
 
-  created = {
+  const created: PlanMember = {
     id: generateId(),
     planId,
     userId: '',
@@ -615,117 +800,130 @@ export const createInviteLink = (
     inviteToken: generateId(),
     createdAt: new Date().toISOString(),
   };
-  plan.members.push(created);
-  writeDb(db);
+
+  await pool.query(
+    `INSERT INTO plan_members
+      (id, plan_id, user_id, email, name, role, status, invite_token, created_at)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+    [
+      created.id,
+      created.planId,
+      created.userId,
+      created.email,
+      created.name,
+      created.role,
+      created.status,
+      created.inviteToken,
+      created.createdAt,
+    ],
+  );
+
   return created;
 };
 
-export const getInviteByToken = (token: string): {
-  plan: TravelPlan;
-  member: PlanMember;
-} | null => {
-  const db = readDb();
-  for (const plan of db.travelPlans) {
-    const member = plan.members.find((m) => m.inviteToken === token);
-    if (member) {
-      return { plan: enrichPlan(plan, db.users), member };
-    }
-  }
-  return null;
+export const getInviteByToken = async (
+  token: string,
+): Promise<{ plan: TravelPlan; member: PlanMember } | null> => {
+  const { rows } = await pool.query(
+    `SELECT * FROM plan_members WHERE invite_token = $1`,
+    [token],
+  );
+  const row = rows[0] as Record<string, unknown> | undefined;
+  if (!row) return null;
+  const member = mapMember(row);
+  const plan = await loadPlan(member.planId);
+  if (!plan) return null;
+  return { plan, member };
 };
 
-export const acceptInvite = (
+export const acceptInvite = async (
   token: string,
   userId: string,
-): TravelPlan | null => {
-  const db = readDb();
-  const user = db.users.find((u) => u.id === userId);
+): Promise<TravelPlan | null> => {
+  const user = await findUserById(userId);
   if (!user) return null;
 
-  for (const plan of db.travelPlans) {
-    const member = plan.members.find((m) => m.inviteToken === token);
-    if (!member) continue;
+  const found = await getInviteByToken(token);
+  if (!found) return null;
 
-    if (member.status === 'accepted' && member.userId === userId) {
-      return enrichPlan(plan, db.users);
-    }
+  const { plan, member } = found;
 
-    // 링크 초대: 동일 토큰으로 새 멤버 생성 (링크는 재사용 가능)
-    if (!member.email && member.name === '초대 링크') {
-      if (canRead(plan, userId)) {
-        return enrichPlan(plan, db.users);
-      }
-      plan.members.push({
-        id: generateId(),
-        planId: plan.id,
-        userId,
-        email: user.email,
-        name: user.name,
-        role: member.role,
-        status: 'accepted',
-        createdAt: new Date().toISOString(),
-      });
-      writeDb(db);
-      return enrichPlan(plan, db.users);
-    }
-
-    // 이메일 초대
-    if (member.email && member.email !== user.email) {
-      throw new Error('이 초대는 다른 이메일 계정용입니다.');
-    }
-
-    member.userId = userId;
-    member.email = user.email;
-    member.name = user.name;
-    member.status = 'accepted';
-    member.inviteToken = undefined;
-    writeDb(db);
-    return enrichPlan(plan, db.users);
+  if (member.status === 'accepted' && member.userId === userId) {
+    return plan;
   }
 
-  return null;
+  if (!member.email && member.name === '초대 링크') {
+    if (canRead(plan, userId)) return plan;
+    await pool.query(
+      `INSERT INTO plan_members
+        (id, plan_id, user_id, email, name, role, status, created_at)
+       VALUES ($1,$2,$3,$4,$5,$6,'accepted',$7)`,
+      [
+        generateId(),
+        plan.id,
+        userId,
+        user.email,
+        user.name,
+        member.role,
+        new Date().toISOString(),
+      ],
+    );
+    return loadPlan(plan.id);
+  }
+
+  if (member.email && member.email !== user.email) {
+    throw new Error('이 초대는 다른 이메일 계정용입니다.');
+  }
+
+  await pool.query(
+    `UPDATE plan_members
+     SET user_id = $1, email = $2, name = $3, status = 'accepted', invite_token = NULL
+     WHERE id = $4`,
+    [userId, user.email, user.name, member.id],
+  );
+
+  return loadPlan(plan.id);
 };
 
-export const updateMemberRole = (
+export const updateMemberRole = async (
   planId: string,
   ownerId: string,
   memberId: string,
   role: 'editor' | 'viewer',
-): PlanMember | null => {
-  let updated: PlanMember | null = null;
-  const db = readDb();
-  const plan = db.travelPlans.find((p) => p.id === planId);
+): Promise<PlanMember | null> => {
+  const plan = await loadPlan(planId);
   if (!plan || !canManage(plan, ownerId)) return null;
 
   const member = plan.members.find((m) => m.id === memberId);
   if (!member || member.role === 'owner') return null;
 
-  member.role = role;
-  updated = member;
-  writeDb(db);
-  return updated;
+  const { rows } = await pool.query(
+    `UPDATE plan_members SET role = $1 WHERE id = $2 AND plan_id = $3 RETURNING *`,
+    [role, memberId, planId],
+  );
+  return rows[0] ? mapMember(rows[0] as Record<string, unknown>) : null;
 };
 
-export const removeMember = (
+export const removeMember = async (
   planId: string,
   ownerId: string,
   memberId: string,
-): boolean => {
-  const db = readDb();
-  const plan = db.travelPlans.find((p) => p.id === planId);
+): Promise<boolean> => {
+  const plan = await loadPlan(planId);
   if (!plan || !canManage(plan, ownerId)) return false;
 
   const member = plan.members.find((m) => m.id === memberId);
   if (!member || member.role === 'owner') return false;
 
-  plan.members = plan.members.filter((m) => m.id !== memberId);
-  writeDb(db);
+  await pool.query(`DELETE FROM plan_members WHERE id = $1 AND plan_id = $2`, [
+    memberId,
+    planId,
+  ]);
   return true;
 };
 
 // --- 2026-08-31 고객게시판 ---
 
-/** 작성자명: 첫 글자만 보이고 나머지는 * */
 export const maskAuthorName = (name: string): string => {
   const trimmed = name.trim();
   if (!trimmed) return '*';
@@ -733,7 +931,6 @@ export const maskAuthorName = (name: string): string => {
   return first + '*'.repeat(Math.max(trimmed.length - 1, 1));
 };
 
-/** 관리자면 '관리자', 아니면 마스킹 이름 */
 export const displayAuthorName = (
   author: User | undefined,
   fallback = '익명',
@@ -750,11 +947,11 @@ export const displayAuthorName = (
 const toPostPublic = (
   post: BoardPost,
   viewerId: string,
-  users: User[],
-  comments: BoardComment[],
-  likes: BoardLike[],
+  author: User | undefined,
+  likeCount: number,
+  likedByMe: boolean,
+  commentCount: number,
 ): BoardPostPublic => {
-  const author = users.find((u) => u.id === post.authorId);
   const display = displayAuthorName(author);
   return {
     id: post.id,
@@ -766,9 +963,9 @@ const toPostPublic = (
     attachments: post.attachments ?? [],
     createdAt: post.createdAt,
     updatedAt: post.updatedAt,
-    likeCount: likes.filter((l) => l.postId === post.id).length,
-    likedByMe: likes.some((l) => l.postId === post.id && l.userId === viewerId),
-    commentCount: comments.filter((c) => c.postId === post.id).length,
+    likeCount,
+    likedByMe,
+    commentCount,
     isMine: post.authorId === viewerId,
   };
 };
@@ -776,9 +973,8 @@ const toPostPublic = (
 const toCommentPublic = (
   comment: BoardComment,
   viewerId: string,
-  users: User[],
+  author: User | undefined,
 ): BoardCommentPublic => {
-  const author = users.find((u) => u.id === comment.authorId);
   const display = displayAuthorName(author);
   return {
     id: comment.id,
@@ -792,56 +988,131 @@ const toCommentPublic = (
   };
 };
 
-export const listBoardPosts = (viewerId: string): BoardPostPublic[] => {
-  const db = readDb();
-  return [...db.boardPosts]
-    .sort(
-      (a, b) =>
-        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
-    )
-    .map((p) =>
-      toPostPublic(p, viewerId, db.users, db.boardComments, db.boardLikes),
+export const listBoardPosts = async (
+  viewerId: string,
+): Promise<BoardPostPublic[]> => {
+  const { rows } = await pool.query(
+    `SELECT p.*,
+            u.name AS author_name,
+            u.email AS author_email,
+            (SELECT COUNT(*)::int FROM board_likes l WHERE l.post_id = p.id) AS like_count,
+            (SELECT COUNT(*)::int FROM board_comments c WHERE c.post_id = p.id) AS comment_count,
+            EXISTS(
+              SELECT 1 FROM board_likes l
+              WHERE l.post_id = p.id AND l.user_id = $1
+            ) AS liked_by_me
+     FROM board_posts p
+     LEFT JOIN users u ON u.id = p.author_id
+     ORDER BY p.created_at DESC`,
+    [viewerId],
+  );
+
+  return rows.map((row) => {
+    const rec = row as Record<string, unknown>;
+    const author: User | undefined = rec.author_email
+      ? {
+          id: String(rec.author_id),
+          email: String(rec.author_email),
+          name: String(rec.author_name ?? ''),
+          passwordHash: '',
+          createdAt: '',
+        }
+      : undefined;
+    return toPostPublic(
+      mapBoardPost(rec),
+      viewerId,
+      author,
+      Number(rec.like_count ?? 0),
+      Boolean(rec.liked_by_me),
+      Number(rec.comment_count ?? 0),
     );
+  });
 };
 
-export const getBoardPost = (
+export const getBoardPost = async (
   postId: string,
   viewerId: string,
-): {
-  post: BoardPostPublic;
-  comments: BoardCommentPublic[];
-} | null => {
-  const db = readDb();
-  const post = db.boardPosts.find((p) => p.id === postId);
-  if (!post) return null;
+): Promise<{ post: BoardPostPublic; comments: BoardCommentPublic[] } | null> => {
+  const { rows } = await pool.query(
+    `SELECT p.*,
+            u.name AS author_name,
+            u.email AS author_email,
+            (SELECT COUNT(*)::int FROM board_likes l WHERE l.post_id = p.id) AS like_count,
+            (SELECT COUNT(*)::int FROM board_comments c WHERE c.post_id = p.id) AS comment_count,
+            EXISTS(
+              SELECT 1 FROM board_likes l
+              WHERE l.post_id = p.id AND l.user_id = $2
+            ) AS liked_by_me
+     FROM board_posts p
+     LEFT JOIN users u ON u.id = p.author_id
+     WHERE p.id = $1`,
+    [postId, viewerId],
+  );
+  const rec = rows[0] as Record<string, unknown> | undefined;
+  if (!rec) return null;
 
-  const comments = db.boardComments
-    .filter((c) => c.postId === postId)
-    .sort(
-      (a, b) =>
-        new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
-    )
-    .map((c) => toCommentPublic(c, viewerId, db.users));
+  const author: User | undefined = rec.author_email
+    ? {
+        id: String(rec.author_id),
+        email: String(rec.author_email),
+        name: String(rec.author_name ?? ''),
+        passwordHash: '',
+        createdAt: '',
+      }
+    : undefined;
+
+  const commentRes = await pool.query(
+    `SELECT c.*, u.name AS author_name, u.email AS author_email
+     FROM board_comments c
+     LEFT JOIN users u ON u.id = c.author_id
+     WHERE c.post_id = $1
+     ORDER BY c.created_at ASC`,
+    [postId],
+  );
+
+  const comments = commentRes.rows.map((row) => {
+    const c = row as Record<string, unknown>;
+    const cAuthor: User | undefined = c.author_email
+      ? {
+          id: String(c.author_id),
+          email: String(c.author_email),
+          name: String(c.author_name ?? ''),
+          passwordHash: '',
+          createdAt: '',
+        }
+      : undefined;
+    return toCommentPublic(
+      {
+        id: String(c.id),
+        postId: String(c.post_id),
+        authorId: String(c.author_id),
+        content: String(c.content),
+        createdAt: asIso(c.created_at),
+      },
+      viewerId,
+      cAuthor,
+    );
+  });
 
   return {
     post: toPostPublic(
-      post,
+      mapBoardPost(rec),
       viewerId,
-      db.users,
-      db.boardComments,
-      db.boardLikes,
+      author,
+      Number(rec.like_count ?? 0),
+      Boolean(rec.liked_by_me),
+      Number(rec.comment_count ?? 0),
     ),
     comments,
   };
 };
 
-export const createBoardPost = (
+export const createBoardPost = async (
   authorId: string,
   title: string,
   content: string,
   attachments: BoardAttachment[] = [],
-): BoardPostPublic => {
-  const db = readDb();
+): Promise<BoardPostPublic> => {
   const now = new Date().toISOString();
   const post: BoardPost = {
     id: generateId(),
@@ -852,18 +1123,28 @@ export const createBoardPost = (
     createdAt: now,
     updatedAt: now,
   };
-  db.boardPosts.push(post);
-  writeDb(db);
-  return toPostPublic(
-    post,
-    authorId,
-    db.users,
-    db.boardComments,
-    db.boardLikes,
+
+  await pool.query(
+    `INSERT INTO board_posts
+      (id, author_id, title, content, attachments, created_at, updated_at)
+     VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+    [
+      post.id,
+      post.authorId,
+      post.title,
+      post.content,
+      JSON.stringify(post.attachments),
+      post.createdAt,
+      post.updatedAt,
+    ],
   );
+
+  const detail = await getBoardPost(post.id, authorId);
+  if (!detail) throw new Error('게시글 생성에 실패했습니다.');
+  return detail.post;
 };
 
-export const updateBoardPost = (
+export const updateBoardPost = async (
   postId: string,
   authorId: string,
   data: {
@@ -871,102 +1152,112 @@ export const updateBoardPost = (
     content?: string;
     attachments?: BoardAttachment[];
   },
-): BoardPostPublic | null => {
-  const db = readDb();
-  const post = db.boardPosts.find((p) => p.id === postId);
-  if (!post || post.authorId !== authorId) return null;
+): Promise<BoardPostPublic | null> => {
+  const existing = await getBoardPostRaw(postId);
+  if (!existing || existing.authorId !== authorId) return null;
 
-  if (data.title != null) post.title = data.title.trim();
-  if (data.content != null) post.content = data.content.trim();
-  if (data.attachments != null) post.attachments = data.attachments;
-  post.updatedAt = new Date().toISOString();
-  writeDb(db);
+  const title = data.title != null ? data.title.trim() : existing.title;
+  const content = data.content != null ? data.content.trim() : existing.content;
+  const attachments = data.attachments ?? existing.attachments;
+  const updatedAt = new Date().toISOString();
 
-  return toPostPublic(
-    post,
-    authorId,
-    db.users,
-    db.boardComments,
-    db.boardLikes,
+  await pool.query(
+    `UPDATE board_posts
+     SET title = $1, content = $2, attachments = $3, updated_at = $4
+     WHERE id = $5`,
+    [title, content, JSON.stringify(attachments), updatedAt, postId],
   );
+
+  const detail = await getBoardPost(postId, authorId);
+  return detail?.post ?? null;
 };
 
-export const deleteBoardPost = (postId: string, authorId: string): boolean => {
-  const db = readDb();
-  const post = db.boardPosts.find((p) => p.id === postId);
-  if (!post || post.authorId !== authorId) return false;
-
-  db.boardPosts = db.boardPosts.filter((p) => p.id !== postId);
-  db.boardComments = db.boardComments.filter((c) => c.postId !== postId);
-  db.boardLikes = db.boardLikes.filter((l) => l.postId !== postId);
-  writeDb(db);
+export const deleteBoardPost = async (
+  postId: string,
+  authorId: string,
+): Promise<boolean> => {
+  const existing = await getBoardPostRaw(postId);
+  if (!existing || existing.authorId !== authorId) return false;
+  await pool.query(`DELETE FROM board_posts WHERE id = $1`, [postId]);
   return true;
 };
 
-export const addBoardComment = (
+export const addBoardComment = async (
   postId: string,
   authorId: string,
   content: string,
-): BoardCommentPublic | null => {
-  const db = readDb();
-  if (!db.boardPosts.some((p) => p.id === postId)) return null;
+): Promise<BoardCommentPublic | null> => {
+  const existing = await getBoardPostRaw(postId);
+  if (!existing) return null;
 
-  const comment: BoardComment = {
-    id: generateId(),
-    postId,
+  const id = generateId();
+  const createdAt = new Date().toISOString();
+  await pool.query(
+    `INSERT INTO board_comments (id, post_id, author_id, content, created_at)
+     VALUES ($1,$2,$3,$4,$5)`,
+    [id, postId, authorId, content.trim(), createdAt],
+  );
+
+  const author = await findUserById(authorId);
+  return toCommentPublic(
+    { id, postId, authorId, content: content.trim(), createdAt },
     authorId,
-    content: content.trim(),
-    createdAt: new Date().toISOString(),
-  };
-  db.boardComments.push(comment);
-  writeDb(db);
-  return toCommentPublic(comment, authorId, db.users);
+    author ?? undefined,
+  );
 };
 
-export const deleteBoardComment = (
+export const deleteBoardComment = async (
   commentId: string,
   authorId: string,
-): boolean => {
-  const db = readDb();
-  const comment = db.boardComments.find((c) => c.id === commentId);
-  if (!comment || comment.authorId !== authorId) return false;
-  db.boardComments = db.boardComments.filter((c) => c.id !== commentId);
-  writeDb(db);
-  return true;
+): Promise<boolean> => {
+  const result = await pool.query(
+    `DELETE FROM board_comments WHERE id = $1 AND author_id = $2`,
+    [commentId, authorId],
+  );
+  return (result.rowCount ?? 0) > 0;
 };
 
-export const toggleBoardLike = (
+export const toggleBoardLike = async (
   postId: string,
   userId: string,
-): { liked: boolean; likeCount: number } | null => {
-  const db = readDb();
-  if (!db.boardPosts.some((p) => p.id === postId)) return null;
+): Promise<{ liked: boolean; likeCount: number } | null> => {
+  const existing = await getBoardPostRaw(postId);
+  if (!existing) return null;
 
-  const existing = db.boardLikes.find(
-    (l) => l.postId === postId && l.userId === userId,
+  const found = await pool.query(
+    `SELECT 1 FROM board_likes WHERE post_id = $1 AND user_id = $2`,
+    [postId, userId],
   );
-  if (existing) {
-    db.boardLikes = db.boardLikes.filter(
-      (l) => !(l.postId === postId && l.userId === userId),
+
+  if (found.rowCount) {
+    await pool.query(
+      `DELETE FROM board_likes WHERE post_id = $1 AND user_id = $2`,
+      [postId, userId],
     );
   } else {
-    db.boardLikes.push({
-      postId,
-      userId,
-      createdAt: new Date().toISOString(),
-    });
+    await pool.query(
+      `INSERT INTO board_likes (post_id, user_id, created_at) VALUES ($1,$2,$3)`,
+      [postId, userId, new Date().toISOString()],
+    );
   }
-  writeDb(db);
 
+  const countRes = await pool.query(
+    `SELECT COUNT(*)::int AS n FROM board_likes WHERE post_id = $1`,
+    [postId],
+  );
   return {
-    liked: !existing,
-    likeCount: db.boardLikes.filter((l) => l.postId === postId).length,
+    liked: !found.rowCount,
+    likeCount: Number(countRes.rows[0]?.n ?? 0),
   };
 };
 
-export const getBoardPostRaw = (postId: string): BoardPost | null => {
-  const db = readDb();
-  return db.boardPosts.find((p) => p.id === postId) ?? null;
+export const getBoardPostRaw = async (
+  postId: string,
+): Promise<BoardPost | null> => {
+  const { rows } = await pool.query(`SELECT * FROM board_posts WHERE id = $1`, [
+    postId,
+  ]);
+  return rows[0] ? mapBoardPost(rows[0] as Record<string, unknown>) : null;
 };
 
 // --- 2026-08-31 공지사항 ---
@@ -974,9 +1265,8 @@ export const getBoardPostRaw = (postId: string): BoardPost | null => {
 const toNoticePublic = (
   post: NoticePost,
   viewerId: string | undefined,
-  users: User[],
+  author: User | undefined,
 ): NoticePostPublic => {
-  const author = users.find((u) => u.id === post.authorId);
   const display = displayAuthorName(author);
   return {
     id: post.id,
@@ -993,44 +1283,72 @@ const toNoticePublic = (
   };
 };
 
-export const listNoticePosts = (
+const loadAuthor = async (authorId: string): Promise<User | undefined> =>
+  (await findUserById(authorId)) ?? undefined;
+
+export const listNoticePosts = async (
   viewerId?: string,
-): NoticePostPublic[] => {
-  const db = readDb();
-  return [...db.noticePosts]
-    .sort(
-      (a, b) =>
-        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
-    )
-    .map((p) => toNoticePublic(p, viewerId, db.users));
+): Promise<NoticePostPublic[]> => {
+  const { rows } = await pool.query(
+    `SELECT n.*, u.name AS author_name, u.email AS author_email
+     FROM notice_posts n
+     LEFT JOIN users u ON u.id = n.author_id
+     ORDER BY n.created_at DESC`,
+  );
+  return rows.map((row) => {
+    const rec = row as Record<string, unknown>;
+    const author: User | undefined = rec.author_email
+      ? {
+          id: String(rec.author_id),
+          email: String(rec.author_email),
+          name: String(rec.author_name ?? ''),
+          passwordHash: '',
+          createdAt: '',
+        }
+      : undefined;
+    return toNoticePublic(mapNoticePost(rec), viewerId, author);
+  });
 };
 
-export const getNoticePost = (
+export const getNoticePost = async (
   postId: string,
   viewerId?: string,
   incrementView = true,
-): NoticePostPublic | null => {
-  const db = readDb();
-  const post = db.noticePosts.find((p) => p.id === postId);
-  if (!post) return null;
-
+): Promise<NoticePostPublic | null> => {
   if (incrementView) {
-    post.viewCount = (post.viewCount ?? 0) + 1;
-    writeDb(db);
+    await pool.query(
+      `UPDATE notice_posts SET view_count = COALESCE(view_count, 0) + 1 WHERE id = $1`,
+      [postId],
+    );
   }
-
-  return toNoticePublic(post, viewerId, db.users);
+  const { rows } = await pool.query(
+    `SELECT n.*, u.name AS author_name, u.email AS author_email
+     FROM notice_posts n
+     LEFT JOIN users u ON u.id = n.author_id
+     WHERE n.id = $1`,
+    [postId],
+  );
+  const rec = rows[0] as Record<string, unknown> | undefined;
+  if (!rec) return null;
+  const author: User | undefined = rec.author_email
+    ? {
+        id: String(rec.author_id),
+        email: String(rec.author_email),
+        name: String(rec.author_name ?? ''),
+        passwordHash: '',
+        createdAt: '',
+      }
+    : undefined;
+  return toNoticePublic(mapNoticePost(rec), viewerId, author);
 };
 
-export const createNoticePost = (
+export const createNoticePost = async (
   authorId: string,
   title: string,
   content: string,
   attachments: BoardAttachment[] = [],
-): NoticePostPublic | null => {
-  if (!isAdminUserId(authorId)) return null;
-
-  const db = readDb();
+): Promise<NoticePostPublic | null> => {
+  if (!(await isAdminUserId(authorId))) return null;
   const now = new Date().toISOString();
   const post: NoticePost = {
     id: generateId(),
@@ -1042,12 +1360,25 @@ export const createNoticePost = (
     createdAt: now,
     updatedAt: now,
   };
-  db.noticePosts.push(post);
-  writeDb(db);
-  return toNoticePublic(post, authorId, db.users);
+  await pool.query(
+    `INSERT INTO notice_posts
+      (id, author_id, title, content, attachments, view_count, created_at, updated_at)
+     VALUES ($1,$2,$3,$4,$5,0,$6,$7)`,
+    [
+      post.id,
+      post.authorId,
+      post.title,
+      post.content,
+      JSON.stringify(post.attachments),
+      post.createdAt,
+      post.updatedAt,
+    ],
+  );
+  const author = await loadAuthor(authorId);
+  return toNoticePublic(post, authorId, author);
 };
 
-export const updateNoticePost = (
+export const updateNoticePost = async (
   postId: string,
   authorId: string,
   data: {
@@ -1055,34 +1386,44 @@ export const updateNoticePost = (
     content?: string;
     attachments?: BoardAttachment[];
   },
-): NoticePostPublic | null => {
-  if (!isAdminUserId(authorId)) return null;
+): Promise<NoticePostPublic | null> => {
+  if (!(await isAdminUserId(authorId))) return null;
+  const existing = await getNoticePostRaw(postId);
+  if (!existing) return null;
 
-  const db = readDb();
-  const post = db.noticePosts.find((p) => p.id === postId);
-  if (!post) return null;
+  const title = data.title != null ? data.title.trim() : existing.title;
+  const content = data.content != null ? data.content.trim() : existing.content;
+  const attachments = data.attachments ?? existing.attachments;
+  const updatedAt = new Date().toISOString();
 
-  if (data.title != null) post.title = data.title.trim();
-  if (data.content != null) post.content = data.content.trim();
-  if (data.attachments != null) post.attachments = data.attachments;
-  post.updatedAt = new Date().toISOString();
-  writeDb(db);
-  return toNoticePublic(post, authorId, db.users);
+  await pool.query(
+    `UPDATE notice_posts
+     SET title = $1, content = $2, attachments = $3, updated_at = $4
+     WHERE id = $5`,
+    [title, content, JSON.stringify(attachments), updatedAt, postId],
+  );
+
+  return getNoticePost(postId, authorId, false);
 };
 
-export const deleteNoticePost = (postId: string, authorId: string): boolean => {
-  if (!isAdminUserId(authorId)) return false;
-  const db = readDb();
-  const exists = db.noticePosts.some((p) => p.id === postId);
-  if (!exists) return false;
-  db.noticePosts = db.noticePosts.filter((p) => p.id !== postId);
-  writeDb(db);
-  return true;
+export const deleteNoticePost = async (
+  postId: string,
+  authorId: string,
+): Promise<boolean> => {
+  if (!(await isAdminUserId(authorId))) return false;
+  const result = await pool.query(`DELETE FROM notice_posts WHERE id = $1`, [
+    postId,
+  ]);
+  return (result.rowCount ?? 0) > 0;
 };
 
-export const getNoticePostRaw = (postId: string): NoticePost | null => {
-  const db = readDb();
-  return db.noticePosts.find((p) => p.id === postId) ?? null;
+export const getNoticePostRaw = async (
+  postId: string,
+): Promise<NoticePost | null> => {
+  const { rows } = await pool.query(`SELECT * FROM notice_posts WHERE id = $1`, [
+    postId,
+  ]);
+  return rows[0] ? mapNoticePost(rows[0] as Record<string, unknown>) : null;
 };
 
 // --- 2026-08-31 배포게시판 ---
@@ -1090,9 +1431,8 @@ export const getNoticePostRaw = (postId: string): NoticePost | null => {
 const toReleasePublic = (
   post: ReleasePost,
   viewerId: string | undefined,
-  users: User[],
+  author: User | undefined,
 ): ReleasePostPublic => {
-  const author = users.find((u) => u.id === post.authorId);
   const display = displayAuthorName(author);
   return {
     id: post.id,
@@ -1111,46 +1451,71 @@ const toReleasePublic = (
   };
 };
 
-export const listReleasePosts = (
+export const listReleasePosts = async (
   viewerId?: string,
-): ReleasePostPublic[] => {
-  const db = readDb();
-  return [...db.releasePosts]
-    .sort(
-      (a, b) =>
-        new Date(b.releasedAt).getTime() - new Date(a.releasedAt).getTime(),
-    )
-    .map((p) => toReleasePublic(p, viewerId, db.users));
+): Promise<ReleasePostPublic[]> => {
+  const { rows } = await pool.query(
+    `SELECT r.*, u.name AS author_name, u.email AS author_email
+     FROM release_posts r
+     LEFT JOIN users u ON u.id = r.author_id
+     ORDER BY r.released_at DESC`,
+  );
+  return rows.map((row) => {
+    const rec = row as Record<string, unknown>;
+    const author: User | undefined = rec.author_email
+      ? {
+          id: String(rec.author_id),
+          email: String(rec.author_email),
+          name: String(rec.author_name ?? ''),
+          passwordHash: '',
+          createdAt: '',
+        }
+      : undefined;
+    return toReleasePublic(mapReleasePost(rec), viewerId, author);
+  });
 };
 
-export const getReleasePost = (
+export const getReleasePost = async (
   postId: string,
   viewerId?: string,
   incrementView = true,
-): ReleasePostPublic | null => {
-  const db = readDb();
-  const post = db.releasePosts.find((p) => p.id === postId);
-  if (!post) return null;
-
+): Promise<ReleasePostPublic | null> => {
   if (incrementView) {
-    post.viewCount = (post.viewCount ?? 0) + 1;
-    writeDb(db);
+    await pool.query(
+      `UPDATE release_posts SET view_count = COALESCE(view_count, 0) + 1 WHERE id = $1`,
+      [postId],
+    );
   }
-
-  return toReleasePublic(post, viewerId, db.users);
+  const { rows } = await pool.query(
+    `SELECT r.*, u.name AS author_name, u.email AS author_email
+     FROM release_posts r
+     LEFT JOIN users u ON u.id = r.author_id
+     WHERE r.id = $1`,
+    [postId],
+  );
+  const rec = rows[0] as Record<string, unknown> | undefined;
+  if (!rec) return null;
+  const author: User | undefined = rec.author_email
+    ? {
+        id: String(rec.author_id),
+        email: String(rec.author_email),
+        name: String(rec.author_name ?? ''),
+        passwordHash: '',
+        createdAt: '',
+      }
+    : undefined;
+  return toReleasePublic(mapReleasePost(rec), viewerId, author);
 };
 
-export const createReleasePost = (
+export const createReleasePost = async (
   authorId: string,
   title: string,
   content: string,
   status: DeployStatus,
   releasedAt: string,
   attachments: BoardAttachment[] = [],
-): ReleasePostPublic | null => {
-  if (!isAdminUserId(authorId)) return null;
-
-  const db = readDb();
+): Promise<ReleasePostPublic | null> => {
+  if (!(await isAdminUserId(authorId))) return null;
   const now = new Date().toISOString();
   const post: ReleasePost = {
     id: generateId(),
@@ -1164,12 +1529,27 @@ export const createReleasePost = (
     createdAt: now,
     updatedAt: now,
   };
-  db.releasePosts.push(post);
-  writeDb(db);
-  return toReleasePublic(post, authorId, db.users);
+  await pool.query(
+    `INSERT INTO release_posts
+      (id, author_id, title, content, status, released_at, attachments, view_count, created_at, updated_at)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,0,$8,$9)`,
+    [
+      post.id,
+      post.authorId,
+      post.title,
+      post.content,
+      post.status,
+      post.releasedAt,
+      JSON.stringify(post.attachments),
+      post.createdAt,
+      post.updatedAt,
+    ],
+  );
+  const author = await loadAuthor(authorId);
+  return toReleasePublic(post, authorId, author);
 };
 
-export const updateReleasePost = (
+export const updateReleasePost = async (
   postId: string,
   authorId: string,
   data: {
@@ -1179,34 +1559,54 @@ export const updateReleasePost = (
     releasedAt?: string;
     attachments?: BoardAttachment[];
   },
-): ReleasePostPublic | null => {
-  if (!isAdminUserId(authorId)) return null;
+): Promise<ReleasePostPublic | null> => {
+  if (!(await isAdminUserId(authorId))) return null;
+  const existing = await getReleasePostRaw(postId);
+  if (!existing) return null;
 
-  const db = readDb();
-  const post = db.releasePosts.find((p) => p.id === postId);
-  if (!post) return null;
+  const title = data.title != null ? data.title.trim() : existing.title;
+  const content = data.content != null ? data.content.trim() : existing.content;
+  const status = data.status ?? existing.status;
+  const releasedAt = data.releasedAt ?? existing.releasedAt;
+  const attachments = data.attachments ?? existing.attachments;
+  const updatedAt = new Date().toISOString();
 
-  if (data.title != null) post.title = data.title.trim();
-  if (data.content != null) post.content = data.content.trim();
-  if (data.status != null) post.status = data.status;
-  if (data.releasedAt != null) post.releasedAt = data.releasedAt;
-  if (data.attachments != null) post.attachments = data.attachments;
-  post.updatedAt = new Date().toISOString();
-  writeDb(db);
-  return toReleasePublic(post, authorId, db.users);
+  await pool.query(
+    `UPDATE release_posts
+     SET title = $1, content = $2, status = $3, released_at = $4,
+         attachments = $5, updated_at = $6
+     WHERE id = $7`,
+    [
+      title,
+      content,
+      status,
+      releasedAt,
+      JSON.stringify(attachments),
+      updatedAt,
+      postId,
+    ],
+  );
+
+  return getReleasePost(postId, authorId, false);
 };
 
-export const deleteReleasePost = (postId: string, authorId: string): boolean => {
-  if (!isAdminUserId(authorId)) return false;
-  const db = readDb();
-  const exists = db.releasePosts.some((p) => p.id === postId);
-  if (!exists) return false;
-  db.releasePosts = db.releasePosts.filter((p) => p.id !== postId);
-  writeDb(db);
-  return true;
+export const deleteReleasePost = async (
+  postId: string,
+  authorId: string,
+): Promise<boolean> => {
+  if (!(await isAdminUserId(authorId))) return false;
+  const result = await pool.query(`DELETE FROM release_posts WHERE id = $1`, [
+    postId,
+  ]);
+  return (result.rowCount ?? 0) > 0;
 };
 
-export const getReleasePostRaw = (postId: string): ReleasePost | null => {
-  const db = readDb();
-  return db.releasePosts.find((p) => p.id === postId) ?? null;
+export const getReleasePostRaw = async (
+  postId: string,
+): Promise<ReleasePost | null> => {
+  const { rows } = await pool.query(
+    `SELECT * FROM release_posts WHERE id = $1`,
+    [postId],
+  );
+  return rows[0] ? mapReleasePost(rows[0] as Record<string, unknown>) : null;
 };

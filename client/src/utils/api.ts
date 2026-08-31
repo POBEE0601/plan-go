@@ -1,10 +1,11 @@
-// 2026-08-31 인증·여행·장소·초대·게시판 API 클라이언트
+// 2026-08-31 인증·여행·장소·초대·게시판·배포 API 클라이언트
 import type {
   BoardComment,
   BoardPost,
   BoardPostDetail,
 } from '../types/board';
 import type { NoticePost } from '../types/notice';
+import type { DeployStatus, ReleasePost } from '../types/release';
 import type {
   DayAssignment,
   InvitePreview,
@@ -237,6 +238,53 @@ export const noticeApi = {
 
   remove: (id: string) =>
     request<void>(`/notices/posts/${id}`, { method: 'DELETE' }),
+};
+
+export const releaseApi = {
+  list: () => request<ReleasePost[]>('/releases/posts', undefined, false),
+
+  get: (id: string) =>
+    request<ReleasePost>(`/releases/posts/${id}`, undefined, false),
+
+  create: (data: {
+    title: string;
+    content: string;
+    status: DeployStatus;
+    releasedAt: string;
+    files?: File[];
+  }) => {
+    const form = new FormData();
+    form.append('title', data.title);
+    form.append('content', data.content);
+    form.append('status', data.status);
+    form.append('releasedAt', data.releasedAt);
+    (data.files ?? []).forEach((f) => form.append('files', f));
+    return requestForm<ReleasePost>('/releases/posts', form);
+  },
+
+  update: (
+    id: string,
+    data: {
+      title: string;
+      content: string;
+      status: DeployStatus;
+      releasedAt: string;
+      keepAttachmentIds: string[];
+      files?: File[];
+    },
+  ) => {
+    const form = new FormData();
+    form.append('title', data.title);
+    form.append('content', data.content);
+    form.append('status', data.status);
+    form.append('releasedAt', data.releasedAt);
+    form.append('keepAttachmentIds', JSON.stringify(data.keepAttachmentIds));
+    (data.files ?? []).forEach((f) => form.append('files', f));
+    return requestForm<ReleasePost>(`/releases/posts/${id}`, form, 'PATCH');
+  },
+
+  remove: (id: string) =>
+    request<void>(`/releases/posts/${id}`, { method: 'DELETE' }),
 };
 
 export const travelApi = {

@@ -16,6 +16,22 @@ if (!process.env.GOOGLE_MAPS_API_KEY) {
   );
 }
 
+if (!process.env.DATABASE_URL?.trim()) {
+  console.error(
+    'DATABASE_URL이 없습니다. Supabase Connection string을 server/.env에 넣으세요.',
+  );
+  process.exit(1);
+}
+
+const { pingDb } = await import('./db/pool.js');
+try {
+  await pingDb();
+  console.log('Supabase Postgres 연결 확인');
+} catch (err) {
+  console.error('Supabase 연결 실패:', err);
+  process.exit(1);
+}
+
 const { default: app } = await import('./app.js');
 
 const PORT = Number(process.env.PORT) || 3001;

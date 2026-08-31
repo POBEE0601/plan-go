@@ -59,9 +59,9 @@ router.post('/login', async (req, res) => {
   res.json({ token, user });
 });
 
-// 내 정보 조회
-router.get('/me', authMiddleware, (req: AuthRequest, res) => {
-  const user = getUserPublic(req.userId!);
+// 2026-08-31 Supabase 비동기 조회
+router.get('/me', authMiddleware, async (req: AuthRequest, res) => {
+  const user = await getUserPublic(req.userId!);
   if (!user) {
     res.status(404).json({ message: '사용자를 찾을 수 없습니다.' });
     return;

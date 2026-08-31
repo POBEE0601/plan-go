@@ -41,9 +41,9 @@ const handleError = (res: import('express').Response, err: unknown) => {
   res.status(status).json({ message });
 };
 
-// 초대 토큰 미리보기 (로그인 선택적 — 공개 정보만)
-router.get('/invites/:token', (req, res) => {
-  const found = getInviteByToken(param(req.params.token));
+// 2026-08-31 Supabase 비동기 API
+router.get('/invites/:token', async (req, res) => {
+  const found = await getInviteByToken(param(req.params.token));
   if (!found) {
     res.status(404).json({ message: '유효하지 않은 초대입니다.' });
     return;
@@ -59,9 +59,9 @@ router.get('/invites/:token', (req, res) => {
 
 router.use(authMiddleware);
 
-router.post('/invites/:token/accept', (req: AuthRequest, res) => {
+router.post('/invites/:token/accept', async (req: AuthRequest, res) => {
   try {
-    const plan = acceptInvite(param(req.params.token), req.userId!);
+    const plan = await acceptInvite(param(req.params.token), req.userId!);
     if (!plan) {
       res.status(404).json({ message: '초대를 수락할 수 없습니다.' });
       return;
@@ -72,12 +72,12 @@ router.post('/invites/:token/accept', (req: AuthRequest, res) => {
   }
 });
 
-router.get('/', (req: AuthRequest, res) => {
-  res.json(getAccessiblePlans(req.userId!));
+router.get('/', async (req: AuthRequest, res) => {
+  res.json(await getAccessiblePlans(req.userId!));
 });
 
-router.get('/:id', (req: AuthRequest, res) => {
-  const plan = getTravelPlanById(param(req.params.id), req.userId!);
+router.get('/:id', async (req: AuthRequest, res) => {
+  const plan = await getTravelPlanById(param(req.params.id), req.userId!);
   if (!plan) {
     res.status(404).json({ message: '여행 계획을 찾을 수 없습니다.' });
     return;
@@ -88,7 +88,7 @@ router.get('/:id', (req: AuthRequest, res) => {
   });
 });
 
-router.post('/', (req: AuthRequest, res) => {
+router.post('/', async (req: AuthRequest, res) => {
   const { title, startDate, endDate, regionName, regionLat, regionLng } =
     req.body as CreateTravelPlanBody;
   if (!title?.trim() || !startDate || !endDate) {
@@ -99,16 +99,22 @@ router.post('/', (req: AuthRequest, res) => {
     res.status(400).json({ message: '여행 지역을 선택해 주세요.' });
     return;
   }
-  const plan = createTravelPlan(req.userId!, title.trim(), startDate, endDate, {
-    regionName: regionName.trim(),
-    regionLat: Number(regionLat),
-    regionLng: Number(regionLng),
-  });
+  const plan = await createTravelPlan(
+    req.userId!,
+    title.trim(),
+    startDate,
+    endDate,
+    {
+      regionName: regionName.trim(),
+      regionLat: Number(regionLat),
+      regionLng: Number(regionLng),
+    },
+  );
   res.status(201).json(plan);
 });
 
-router.delete('/:id', (req: AuthRequest, res) => {
-  const deleted = deleteTravelPlan(param(req.params.id), req.userId!);
+router.delete('/:id', async (req: AuthRequest, res) => {
+  const deleted = await deleteTravelPlan(param(req.params.id), req.userId!);
   if (!deleted) {
     res.status(404).json({ message: '삭제할 수 없습니다. (소유자만 가능)' });
     return;
@@ -117,14 +123,14 @@ router.delete('/:id', (req: AuthRequest, res) => {
 });
 
 // Places
-router.post('/:planId/places', (req: AuthRequest, res) => {
+router.post('/:planId/places', async (req: AuthRequest, res) => {
   try {
     const body = req.body as CreatePlaceBody;
     if (!body.name?.trim() || body.lat == null || body.lng == null) {
       res.status(400).json({ message: 'name, lat, lng은 필수입니다.' });
       return;
     }
-    const place = addPlace(param(req.params.planId), req.userId!, body);
+    const place = await addPlace(param(req.params.planId), req.userId!, body);
     if (!place) {
       res.status(403).json({ message: '장소를 추가할 권한이 없습니다.' });
       return;
@@ -135,9 +141,9 @@ router.post('/:planId/places', (req: AuthRequest, res) => {
   }
 });
 
-router.patch('/:planId/places/:placeId', (req: AuthRequest, res) => {
+router.patch('/:planId/places/:placeId', async (req: AuthRequest, res) => {
   try {
-    const place = updatePlace(
+    const place = await updatePlace(
       param(req.params.planId),
       req.userId!,
       param(req.params.placeId),
@@ -153,9 +159,9 @@ router.patch('/:planId/places/:placeId', (req: AuthRequest, res) => {
   }
 });
 
-router.delete('/:planId/places/:placeId', (req: AuthRequest, res) => {
+router.delete('/:planId/places/:placeId', async (req: AuthRequest, res) => {
   try {
-    const ok = deletePlace(
+    const ok = await deletePlace(
       param(req.params.planId),
       req.userId!,
       param(req.params.placeId),
@@ -171,14 +177,14 @@ router.delete('/:planId/places/:placeId', (req: AuthRequest, res) => {
 });
 
 // Day assignments
-router.post('/:planId/days', (req: AuthRequest, res) => {
+router.post('/:planId/days', async (req: AuthRequest, res) => {
   try {
     const body = req.body as AssignDayBody;
     if (!body.placeId || !body.dayIndex) {
       res.status(400).json({ message: 'placeId, dayIndex는 필수입니다.' });
       return;
     }
-    const assignment = assignPlaceToDay(
+    const assignment = await assignPlaceToDay(
       param(req.params.planId),
       req.userId!,
       body.placeId,
@@ -196,10 +202,10 @@ router.post('/:planId/days', (req: AuthRequest, res) => {
   }
 });
 
-router.patch('/:planId/days/:assignmentId', (req: AuthRequest, res) => {
+router.patch('/:planId/days/:assignmentId', async (req: AuthRequest, res) => {
   try {
     const body = req.body as MoveAssignmentBody;
-    const updated = updateAssignment(
+    const updated = await updateAssignment(
       param(req.params.planId),
       req.userId!,
       param(req.params.assignmentId),
@@ -215,14 +221,14 @@ router.patch('/:planId/days/:assignmentId', (req: AuthRequest, res) => {
   }
 });
 
-router.put('/:planId/days/:dayIndex/reorder', (req: AuthRequest, res) => {
+router.put('/:planId/days/:dayIndex/reorder', async (req: AuthRequest, res) => {
   try {
     const ids = (req.body as { orderedIds: string[] }).orderedIds;
     if (!Array.isArray(ids)) {
       res.status(400).json({ message: 'orderedIds 배열이 필요합니다.' });
       return;
     }
-    const result = reorderDay(
+    const result = await reorderDay(
       param(req.params.planId),
       req.userId!,
       Number(param(req.params.dayIndex)),
@@ -238,9 +244,9 @@ router.put('/:planId/days/:dayIndex/reorder', (req: AuthRequest, res) => {
   }
 });
 
-router.delete('/:planId/days/:assignmentId', (req: AuthRequest, res) => {
+router.delete('/:planId/days/:assignmentId', async (req: AuthRequest, res) => {
   try {
-    const ok = removeAssignment(
+    const ok = await removeAssignment(
       param(req.params.planId),
       req.userId!,
       param(req.params.assignmentId),
@@ -256,7 +262,7 @@ router.delete('/:planId/days/:assignmentId', (req: AuthRequest, res) => {
 });
 
 // Members / invites
-router.post('/:planId/invites', (req: AuthRequest, res) => {
+router.post('/:planId/invites', async (req: AuthRequest, res) => {
   try {
     const body = req.body as InviteBody;
     if (!body.role || !['editor', 'viewer'].includes(body.role)) {
@@ -267,7 +273,7 @@ router.post('/:planId/invites', (req: AuthRequest, res) => {
     const planId = param(req.params.planId);
 
     if (body.createLink) {
-      const linkInvite = createInviteLink(planId, req.userId!, body.role);
+      const linkInvite = await createInviteLink(planId, req.userId!, body.role);
       if (!linkInvite) {
         res.status(403).json({ message: '초대 권한이 없습니다. (소유자만)' });
         return;
@@ -284,7 +290,7 @@ router.post('/:planId/invites', (req: AuthRequest, res) => {
       return;
     }
 
-    const member = inviteByEmail(
+    const member = await inviteByEmail(
       planId,
       req.userId!,
       body.email,
@@ -303,13 +309,13 @@ router.post('/:planId/invites', (req: AuthRequest, res) => {
   }
 });
 
-router.patch('/:planId/members/:memberId', (req: AuthRequest, res) => {
+router.patch('/:planId/members/:memberId', async (req: AuthRequest, res) => {
   const role = (req.body as { role: 'editor' | 'viewer' }).role;
   if (!role || !['editor', 'viewer'].includes(role)) {
     res.status(400).json({ message: 'role은 editor 또는 viewer여야 합니다.' });
     return;
   }
-  const member = updateMemberRole(
+  const member = await updateMemberRole(
     param(req.params.planId),
     req.userId!,
     param(req.params.memberId),
@@ -322,8 +328,8 @@ router.patch('/:planId/members/:memberId', (req: AuthRequest, res) => {
   res.json(member);
 });
 
-router.delete('/:planId/members/:memberId', (req: AuthRequest, res) => {
-  const ok = removeMember(
+router.delete('/:planId/members/:memberId', async (req: AuthRequest, res) => {
+  const ok = await removeMember(
     param(req.params.planId),
     req.userId!,
     param(req.params.memberId),
