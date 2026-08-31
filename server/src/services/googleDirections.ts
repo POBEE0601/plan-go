@@ -23,6 +23,12 @@ const MODE_LABEL: Record<string, string> = {
   driving: '차량',
 };
 
+const inferRegion = (lat: number, lng: number): string | undefined => {
+  if (lat > 24 && lat < 46 && lng > 122 && lng < 146) return 'jp';
+  if (lat > 33 && lat < 39 && lng > 124 && lng < 132) return 'kr';
+  return undefined;
+};
+
 const fetchMode = async (
   fromLat: number,
   fromLng: number,
@@ -41,9 +47,13 @@ const fetchMode = async (
     key: API_KEY,
   });
 
+  const region = inferRegion(fromLat, fromLng);
+  if (region) params.set('region', region);
+
   // 대중교통은 departure_time 필수인 경우가 많음
   if (mode === 'transit') {
     params.set('departure_time', 'now');
+    params.set('transit_mode', 'bus|rail|subway|train');
   }
 
   const res = await fetch(
@@ -75,90 +85,6 @@ const fetchMode = async (
   };
 };
 
-// API 실패 시 직선거리 기반 간단 추정
-const haversineMeters = (
-  lat1: number,
-  lng1: number,
-  lat2: number,
-  lng2: number,
-): number => {
-  const R = 6371000;
-  const toRad = (d: number) => (d * Math.PI) / 180;
-  const dLat = toRad(lat2 - lat1);
-  const dLng = toRad(lng2 - lng1);
-  const a =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
-  return 2 * R * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-};
-
-const formatDistance = (meters: number): string =>
-  meters >= 1000 ? `${(meters / 1000).toFixed(1)} km` : `${Math.round(meters)} m`;
-
-const formatDuration = (sec: number): string => {
-  const m = Math.round(sec / 60);
-  if (m < 60) return `약 ${m}분`;
-  const h = Math.floor(m / 60);
-  const rem = m % 60;
-  return rem ? `약 ${h}시간 ${rem}분` : `약 ${h}시간`;
-};
-
-const estimateMode = (
-  mode: 'walking' | 'transit' | 'driving',
-  meters: number,
-): TransitOption => {
-  // 도보 4.5km/h, 대중교통 12km/h(+대기), 차량 30km/h 시내 가정
-  const speedMps =
-    mode === 'walking' ? 4500 / 3600 : mode === 'transit' ? 12000 / 3600 : 30000 / 3600;
-  // 대중교통은 대기·환승 여유 +8분
-  const waitSec = mode === 'transit' ? 8 * 60 : 0;
-  const durationSec = Math.round(meters / speedMps) + waitSec;
-
-  return {
-    mode,
-    label: MODE_LABEL[mode],
-    durationText: formatDuration(durationSec),
-    durationSec,
-    distanceText: formatDistance(meters),
-    distanceMeters: Math.round(meters),
-  };
-};
-
-const estimateFallback = (
-  fromLat: number,
-  fromLng: number,
-  toLat: number,
-  toLng: number,
-): TransitOption[] => {
-  const meters = haversineMeters(fromLat, fromLng, toLat, toLng);
-  return (
-    ['walking', 'transit', 'driving'] as const
-  ).map((mode) => estimateMode(mode, meters));
-};
-
-const ensureAllModes = (
-  options: TransitOption[],
-  fromLat: number,
-  fromLng: number,
-  toLat: number,
-  toLng: number,
-): TransitOption[] => {
-  const meters =
-    options[0]?.distanceMeters ??
-    Math.round(haversineMeters(fromLat, fromLng, toLat, toLng));
-
-  const byMode = new Map(options.map((o) => [o.mode, o]));
-  (['walking', 'transit', 'driving'] as const).forEach((mode) => {
-    if (!byMode.has(mode)) {
-      byMode.set(mode, estimateMode(mode, meters));
-    }
-  });
-
-  return ['walking', 'transit', 'driving'].map(
-    (mode) => byMode.get(mode as TransitOption['mode'])!,
-  );
-};
-
 const pickRecommended = (options: TransitOption[]): TransitOption | null => {
   if (!options.length) return null;
   const walking = options.find((o) => o.mode === 'walking');
@@ -177,18 +103,11 @@ export const getTransitSummary = async (
 ): Promise<TransitSummary> => {
   const modes = ['walking', 'transit', 'driving'] as const;
 
-  let options = (
+  const options = (
     await Promise.all(
       modes.map((mode) => fetchMode(fromLat, fromLng, toLat, toLng, mode)),
     )
   ).filter((o): o is TransitOption => o != null);
-
-  if (!options.length) {
-    options = estimateFallback(fromLat, fromLng, toLat, toLng);
-  } else {
-    // Google transit이 자주 실패하므로 누락 모드는 추정으로 채움
-    options = ensureAllModes(options, fromLat, fromLng, toLat, toLng);
-  }
 
   return {
     from: { lat: fromLat, lng: fromLng },
@@ -252,14 +171,6 @@ const stripHtml = (html: string): string =>
     .replace(/&amp;/g, '&')
     .replace(/\s+/g, ' ')
     .trim();
-
-const inferRegion = (lat: number, lng: number): string | undefined => {
-  // 일본
-  if (lat > 24 && lat < 46 && lng > 122 && lng < 146) return 'jp';
-  // 한국
-  if (lat > 33 && lat < 39 && lng > 124 && lng < 132) return 'kr';
-  return undefined;
-};
 
 const fetchDirectionsOnce = async (
   fromLat: number,
@@ -480,51 +391,6 @@ const fetchDirectionsDetail = async (
   return { detail: null, failReason };
 };
 
-const estimateDetail = (
-  mode: 'walking' | 'transit' | 'driving',
-  fromLat: number,
-  fromLng: number,
-  toLat: number,
-  toLng: number,
-  failReason?: string,
-  fromName?: string,
-  toName?: string,
-): RouteDetail => {
-  const opt = estimateMode(
-    mode,
-    haversineMeters(fromLat, fromLng, toLat, toLng),
-  );
-
-  return {
-    mode,
-    label: opt.label,
-    durationText: opt.durationText,
-    distanceText: opt.distanceText,
-    summary: `${opt.label} 예상 경로`,
-    estimated: true,
-    failReason,
-    mapsUrl: buildMapsUrl(
-      fromLat,
-      fromLng,
-      toLat,
-      toLng,
-      mode,
-      fromName,
-      toName,
-    ),
-    steps: [
-      {
-        instruction: failReason
-          ? `${opt.label} 상세 경로를 불러오지 못했습니다.`
-          : `${opt.label}로 이동합니다 (상세 경로를 불러오지 못해 예상치입니다)`,
-        distanceText: opt.distanceText,
-        durationText: opt.durationText,
-        travelMode: mode,
-      },
-    ],
-  };
-};
-
 export const getRouteDetails = async (
   fromLat: number,
   fromLng: number,
@@ -554,19 +420,26 @@ export const getRouteDetails = async (
 
   const routes = modes.map((mode, i) => {
     const item = fetched[i];
-    return (
-      item.detail ??
-      estimateDetail(
-        mode,
+    if (item.detail) return item.detail;
+    return {
+      mode,
+      label: MODE_LABEL[mode],
+      durationText: '',
+      distanceText: '',
+      summary: MODE_LABEL[mode],
+      steps: [],
+      estimated: false,
+      failReason: item.failReason,
+      mapsUrl: buildMapsUrl(
         fromLat,
         fromLng,
         toLat,
         toLng,
-        item.failReason,
+        mode,
         fromName,
         toName,
-      )
-    );
+      ),
+    };
   });
 
   return {

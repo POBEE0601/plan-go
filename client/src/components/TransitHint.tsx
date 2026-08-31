@@ -1,41 +1,57 @@
-// 2026-08-31 장소 간 이동수단 요약 + 클릭 시 상세 팝업
+// 2026-08-31 장소 간 이동: Maps JS 실제 소요시간 (추정 없음)
 import { useEffect, useState } from 'react';
 import { Bus, Car, ChevronRight, Footprints, Loader2 } from 'lucide-react';
-import { placesApi } from '../utils/api';
-import type { Place, TransitOption, TransitSummary } from '../types/travel';
+import { useGoogleMaps } from '../hooks/useGoogleMaps';
+import {
+  fetchJsRoutes,
+  type JsRouteDetail,
+  type TravelModeKey,
+} from '../utils/jsDirections';
+import type { Place } from '../types/travel';
 import TransitDetailModal from './TransitDetailModal';
 
 interface TransitHintProps {
   from: Place;
   to: Place;
-  /** 일차 내 구간 식별자 — 순서 바뀌면 값이 바뀌어 재요청 */
   segmentKey: string;
 }
 
-const modeIcon = (mode: TransitOption['mode']) => {
+const MODE_ORDER: TravelModeKey[] = ['walking', 'transit', 'driving'];
+
+const modeIcon = (mode: TravelModeKey) => {
   if (mode === 'walking') return <Footprints className="h-3 w-3" />;
   if (mode === 'transit') return <Bus className="h-3 w-3" />;
   return <Car className="h-3 w-3" />;
 };
 
+const pickRecommended = (
+  routes: Partial<Record<TravelModeKey, JsRouteDetail | null>>,
+): JsRouteDetail | null => {
+  const walking = routes.walking;
+  if (walking && walking.distanceMeters <= 1200) return walking;
+  if (routes.transit) return routes.transit;
+  if (routes.driving) return routes.driving;
+  return walking ?? null;
+};
+
 export default function TransitHint({ from, to, segmentKey }: TransitHintProps) {
-  const [summary, setSummary] = useState<TransitSummary | null>(null);
+  const { isLoaded } = useGoogleMaps();
+  const [routes, setRoutes] = useState<
+    Partial<Record<TravelModeKey, JsRouteDetail | null>>
+  >({});
   const [loading, setLoading] = useState(true);
   const [detailOpen, setDetailOpen] = useState(false);
-  const [detailMode, setDetailMode] = useState<TransitOption['mode']>('transit');
+  const [detailMode, setDetailMode] = useState<TravelModeKey>('transit');
 
   useEffect(() => {
+    if (!isLoaded) return;
     let cancelled = false;
-    setSummary(null);
     setLoading(true);
+    setRoutes({});
 
-    placesApi
-      .transit(from.lat, from.lng, to.lat, to.lng)
+    fetchJsRoutes(from, to)
       .then((data) => {
-        if (!cancelled) setSummary(data);
-      })
-      .catch(() => {
-        if (!cancelled) setSummary(null);
+        if (!cancelled) setRoutes(data);
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -44,9 +60,9 @@ export default function TransitHint({ from, to, segmentKey }: TransitHintProps) 
     return () => {
       cancelled = true;
     };
-  }, [segmentKey, from.id, from.lat, from.lng, to.id, to.lat, to.lng]);
+  }, [isLoaded, segmentKey, from.id, from.lat, from.lng, to.id, to.lat, to.lng]);
 
-  if (loading) {
+  if (!isLoaded || loading) {
     return (
       <div className="flex items-center justify-center py-1 text-slate-300">
         <Loader2 className="h-3 w-3 animate-spin" />
@@ -54,15 +70,10 @@ export default function TransitHint({ from, to, segmentKey }: TransitHintProps) 
     );
   }
 
-  if (!summary?.options.length) return null;
+  const recommended = pickRecommended(routes);
+  const recMode = recommended?.mode;
 
-  const ordered = (['walking', 'transit', 'driving'] as const)
-    .map((mode) => summary.options.find((o) => o.mode === mode))
-    .filter((o): o is TransitOption => o != null);
-
-  const recMode = summary.recommended?.mode;
-
-  const openDetail = (mode?: TransitOption['mode']) => {
+  const openDetail = (mode?: TravelModeKey) => {
     setDetailMode(mode ?? recMode ?? 'transit');
     setDetailOpen(true);
   };
@@ -85,15 +96,16 @@ export default function TransitHint({ from, to, segmentKey }: TransitHintProps) 
         <div className="flex items-start justify-between gap-1">
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-              {ordered.map((o) => {
-                const isRec = o.mode === recMode;
+              {MODE_ORDER.map((mode) => {
+                const route = routes[mode];
+                const isRec = mode === recMode;
                 return (
                   <button
-                    key={o.mode}
+                    key={mode}
                     type="button"
                     onClick={(e) => {
                       e.stopPropagation();
-                      openDetail(o.mode);
+                      openDetail(mode);
                     }}
                     className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] hover:ring-1 hover:ring-primary-200 ${
                       isRec
@@ -101,17 +113,22 @@ export default function TransitHint({ from, to, segmentKey }: TransitHintProps) 
                         : 'text-slate-500'
                     }`}
                   >
-                    {modeIcon(o.mode)}
-                    {o.label} {o.durationText}
+                    {modeIcon(mode)}
+                    {mode === 'walking'
+                      ? '도보'
+                      : mode === 'transit'
+                        ? '대중교통'
+                        : '차량'}{' '}
+                    {route ? route.durationText : '확인'}
                   </button>
                 );
               })}
             </div>
-            {summary.recommended && (
-              <p className="mt-0.5 text-[10px] text-slate-400">
-                추천 · {summary.recommended.distanceText} · 클릭하여 상세 보기
-              </p>
-            )}
+            <p className="mt-0.5 text-[10px] text-slate-400">
+              {recommended
+                ? `추천 · ${recommended.distanceText} · 클릭하여 상세 보기`
+                : '실제 경로 · 클릭하여 지도에서 보기'}
+            </p>
           </div>
           <ChevronRight className="mt-0.5 h-3.5 w-3.5 shrink-0 text-slate-300" />
         </div>

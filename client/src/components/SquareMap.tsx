@@ -3,14 +3,13 @@ import { useEffect, useRef } from 'react';
 import {
   GoogleMap,
   Marker,
-  useJsApiLoader,
 } from '@react-google-maps/api';
 import { Loader2, Map as MapIcon, X } from 'lucide-react';
 import { useTravelStore } from '../store/useTravelStore';
 import { useMapUiStore } from '../store/useMapUiStore';
+import { useGoogleMaps } from '../hooks/useGoogleMaps';
 import type { Place, PlaceSearchResult } from '../types/travel';
 
-const MAPS_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY as string;
 const mapContainerStyle = { width: '100%', height: '100%' };
 
 interface SquareMapProps {
@@ -27,10 +26,7 @@ export default function SquareMap({ onClose }: SquareMapProps) {
   } = useTravelStore();
   const searchResults = useMapUiStore((s) => s.searchResults);
 
-  const { isLoaded, loadError } = useJsApiLoader({
-    googleMapsApiKey: MAPS_KEY || '',
-    language: 'ko',
-  });
+  const { isLoaded, loadError } = useGoogleMaps();
 
   const mapRef = useRef<google.maps.Map | null>(null);
 
