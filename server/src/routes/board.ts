@@ -1,15 +1,11 @@
+// 2026-09-01 첨부를 Supabase Storage로 저장 (Vercel/Render 디스크 휘발 방지)
 // 2026-08-31 고객게시판 API (로그인 필수, 첨부 업로드)
-import fs from 'fs';
-import path from 'path';
-import { fileURLToPath } from 'url';
 import { Router } from 'express';
-import multer from 'multer';
 import {
   addBoardComment,
   createBoardPost,
   deleteBoardComment,
   deleteBoardPost,
-  generateId,
   getBoardPost,
   getBoardPostRaw,
   listBoardPosts,
@@ -17,67 +13,8 @@ import {
   updateBoardPost,
 } from '../db/database.js';
 import { authMiddleware, type AuthRequest } from '../middleware/auth.js';
-import type { BoardAttachment } from '../types/board.js';
-
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-export const uploadsDir = path.join(__dirname, '../../uploads');
-
-if (!fs.existsSync(uploadsDir)) {
-  fs.mkdirSync(uploadsDir, { recursive: true });
-}
-
-const ALLOWED_MIME = new Set([
-  'image/jpeg',
-  'image/png',
-  'image/webp',
-  'image/gif',
-  'application/pdf',
-]);
-
-const storage = multer.diskStorage({
-  destination: (_req, _file, cb) => cb(null, uploadsDir),
-  filename: (_req, file, cb) => {
-    const ext = path.extname(file.originalname).toLowerCase().slice(0, 10);
-    cb(null, `${Date.now()}-${Math.random().toString(36).slice(2, 8)}${ext}`);
-  },
-});
-
-const upload = multer({
-  storage,
-  limits: { fileSize: 5 * 1024 * 1024, files: 8 },
-  fileFilter: (_req, file, cb) => {
-    if (!ALLOWED_MIME.has(file.mimetype)) {
-      cb(new Error('이미지(jpg/png/webp/gif) 또는 PDF만 업로드할 수 있습니다.'));
-      return;
-    }
-    cb(null, true);
-  },
-});
-
-const toAttachments = (
-  files: Express.Multer.File[] | undefined,
-): BoardAttachment[] =>
-  (files ?? []).map((f) => ({
-    id: generateId(),
-    originalName: Buffer.from(f.originalname, 'latin1').toString('utf8'),
-    storedName: f.filename,
-    mimeType: f.mimetype,
-    size: f.size,
-    url: `/uploads/${f.filename}`,
-  }));
-
-const removeFiles = (attachments: BoardAttachment[]): void => {
-  for (const a of attachments) {
-    const full = path.join(uploadsDir, a.storedName);
-    if (fs.existsSync(full)) {
-      try {
-        fs.unlinkSync(full);
-      } catch {
-        // 파일 삭제 실패는 무시
-      }
-    }
-  }
-};
+import { upload } from '../middleware/upload.js';
+import { removeAttachments, saveUploads } from '../services/fileStore.js';
 
 const router = Router();
 
@@ -114,18 +51,23 @@ router.post('/posts', (req: AuthRequest, res) => {
     const title = String(req.body.title ?? '').trim();
     const content = String(req.body.content ?? '').trim();
     if (!title || !content) {
-      removeFiles(toAttachments(req.files as Express.Multer.File[] | undefined));
       res.status(400).json({ message: '제목과 내용을 입력해 주세요.' });
       return;
     }
 
-    const post = await createBoardPost(
-      req.userId!,
-      title,
-      content,
-      toAttachments(req.files as Express.Multer.File[] | undefined),
-    );
-    res.status(201).json(post);
+    try {
+      const post = await createBoardPost(
+        req.userId!,
+        title,
+        content,
+        await saveUploads(req.files as Express.Multer.File[] | undefined),
+      );
+      res.status(201).json(post);
+    } catch (err) {
+      res.status(502).json({
+        message: err instanceof Error ? err.message : '저장에 실패했습니다.',
+      });
+    }
   });
 });
 
@@ -141,12 +83,10 @@ router.patch('/posts/:id', (req: AuthRequest, res) => {
 
     const existing = await getBoardPostRaw(param(req.params.id));
     if (!existing) {
-      removeFiles(toAttachments(req.files as Express.Multer.File[] | undefined));
       res.status(404).json({ message: '게시글을 찾을 수 없습니다.' });
       return;
     }
     if (existing.authorId !== req.userId) {
-      removeFiles(toAttachments(req.files as Express.Multer.File[] | undefined));
       res.status(403).json({ message: '작성자만 수정할 수 있습니다.' });
       return;
     }
@@ -163,7 +103,7 @@ router.patch('/posts/:id', (req: AuthRequest, res) => {
 
     const kept = existing.attachments.filter((a) => keepIds.includes(a.id));
     const removed = existing.attachments.filter((a) => !keepIds.includes(a.id));
-    removeFiles(removed);
+    await removeAttachments(removed);
 
     const title =
       req.body.title != null
@@ -175,26 +115,31 @@ router.patch('/posts/:id', (req: AuthRequest, res) => {
         : existing.content;
 
     if (!title || !content) {
-      removeFiles(toAttachments(req.files as Express.Multer.File[] | undefined));
       res.status(400).json({ message: '제목과 내용을 입력해 주세요.' });
       return;
     }
 
-    const attachments = [
-      ...kept,
-      ...toAttachments(req.files as Express.Multer.File[] | undefined),
-    ];
+    try {
+      const attachments = [
+        ...kept,
+        ...(await saveUploads(req.files as Express.Multer.File[] | undefined)),
+      ];
 
-    const updated = await updateBoardPost(param(req.params.id), req.userId!, {
-      title,
-      content,
-      attachments,
-    });
-    if (!updated) {
-      res.status(403).json({ message: '작성자만 수정할 수 있습니다.' });
-      return;
+      const updated = await updateBoardPost(param(req.params.id), req.userId!, {
+        title,
+        content,
+        attachments,
+      });
+      if (!updated) {
+        res.status(403).json({ message: '작성자만 수정할 수 있습니다.' });
+        return;
+      }
+      res.json(updated);
+    } catch (err) {
+      res.status(502).json({
+        message: err instanceof Error ? err.message : '저장에 실패했습니다.',
+      });
     }
-    res.json(updated);
   });
 });
 
@@ -215,7 +160,7 @@ router.delete('/posts/:id', async (req: AuthRequest, res) => {
     res.status(403).json({ message: '작성자만 삭제할 수 있습니다.' });
     return;
   }
-  removeFiles(existing.attachments);
+  await removeAttachments(existing.attachments);
   res.status(204).send();
 });
 

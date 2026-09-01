@@ -1,12 +1,9 @@
+// 2026-09-01 첨부를 Supabase Storage로 저장
 // 2026-08-31 공지사항 API (비회원 조회 가능, 작성은 관리자만)
-import fs from 'fs';
-import path from 'path';
 import { Router } from 'express';
-import multer from 'multer';
 import {
   createNoticePost,
   deleteNoticePost,
-  generateId,
   getNoticePost,
   getNoticePostRaw,
   isAdminUserId,
@@ -18,61 +15,8 @@ import {
   optionalAuthMiddleware,
   type AuthRequest,
 } from '../middleware/auth.js';
-import type { BoardAttachment } from '../types/board.js';
-import { uploadsDir } from './board.js';
-
-const ALLOWED_MIME = new Set([
-  'image/jpeg',
-  'image/png',
-  'image/webp',
-  'image/gif',
-  'application/pdf',
-]);
-
-const storage = multer.diskStorage({
-  destination: (_req, _file, cb) => cb(null, uploadsDir),
-  filename: (_req, file, cb) => {
-    const ext = path.extname(file.originalname).toLowerCase().slice(0, 10);
-    cb(null, `${Date.now()}-${Math.random().toString(36).slice(2, 8)}${ext}`);
-  },
-});
-
-const upload = multer({
-  storage,
-  limits: { fileSize: 5 * 1024 * 1024, files: 8 },
-  fileFilter: (_req, file, cb) => {
-    if (!ALLOWED_MIME.has(file.mimetype)) {
-      cb(new Error('이미지(jpg/png/webp/gif) 또는 PDF만 업로드할 수 있습니다.'));
-      return;
-    }
-    cb(null, true);
-  },
-});
-
-const toAttachments = (
-  files: Express.Multer.File[] | undefined,
-): BoardAttachment[] =>
-  (files ?? []).map((f) => ({
-    id: generateId(),
-    originalName: Buffer.from(f.originalname, 'latin1').toString('utf8'),
-    storedName: f.filename,
-    mimeType: f.mimetype,
-    size: f.size,
-    url: `/uploads/${f.filename}`,
-  }));
-
-const removeFiles = (attachments: BoardAttachment[]): void => {
-  for (const a of attachments) {
-    const full = path.join(uploadsDir, a.storedName);
-    if (fs.existsSync(full)) {
-      try {
-        fs.unlinkSync(full);
-      } catch {
-        // ignore
-      }
-    }
-  }
-};
+import { upload } from '../middleware/upload.js';
+import { removeAttachments, saveUploads } from '../services/fileStore.js';
 
 const param = (value: string | string[]): string =>
   Array.isArray(value) ? value[0] : value;
@@ -116,20 +60,27 @@ router.post('/posts', authMiddleware, async (req: AuthRequest, res) => {
 
     const title = String(req.body.title ?? '').trim();
     const content = String(req.body.content ?? '').trim();
-    const files = toAttachments(req.files as Express.Multer.File[] | undefined);
     if (!title || !content) {
-      removeFiles(files);
       res.status(400).json({ message: '제목과 내용을 입력해 주세요.' });
       return;
     }
 
-    const post = await createNoticePost(req.userId!, title, content, files);
-    if (!post) {
-      removeFiles(files);
-      res.status(403).json({ message: '관리자만 공지사항을 작성할 수 있습니다.' });
-      return;
+    try {
+      const files = await saveUploads(
+        req.files as Express.Multer.File[] | undefined,
+      );
+      const post = await createNoticePost(req.userId!, title, content, files);
+      if (!post) {
+        await removeAttachments(files);
+        res.status(403).json({ message: '관리자만 공지사항을 작성할 수 있습니다.' });
+        return;
+      }
+      res.status(201).json(post);
+    } catch (err) {
+      res.status(502).json({
+        message: err instanceof Error ? err.message : '저장에 실패했습니다.',
+      });
     }
-    res.status(201).json(post);
   });
 });
 
@@ -146,7 +97,6 @@ router.patch('/posts/:id', authMiddleware, async (req: AuthRequest, res) => {
 
     const existing = await getNoticePostRaw(param(req.params.id));
     if (!existing) {
-      removeFiles(toAttachments(req.files as Express.Multer.File[] | undefined));
       res.status(404).json({ message: '공지사항을 찾을 수 없습니다.' });
       return;
     }
@@ -163,7 +113,7 @@ router.patch('/posts/:id', authMiddleware, async (req: AuthRequest, res) => {
 
     const kept = existing.attachments.filter((a) => keepIds.includes(a.id));
     const removed = existing.attachments.filter((a) => !keepIds.includes(a.id));
-    removeFiles(removed);
+    await removeAttachments(removed);
 
     const title =
       req.body.title != null ? String(req.body.title).trim() : existing.title;
@@ -173,14 +123,13 @@ router.patch('/posts/:id', authMiddleware, async (req: AuthRequest, res) => {
         : existing.content;
 
     if (!title || !content) {
-      removeFiles(toAttachments(req.files as Express.Multer.File[] | undefined));
       res.status(400).json({ message: '제목과 내용을 입력해 주세요.' });
       return;
     }
 
     const attachments = [
       ...kept,
-      ...toAttachments(req.files as Express.Multer.File[] | undefined),
+      ...(await saveUploads(req.files as Express.Multer.File[] | undefined)),
     ];
 
     const updated = await updateNoticePost(param(req.params.id), req.userId!, {
@@ -210,7 +159,7 @@ router.delete('/posts/:id', authMiddleware, async (req: AuthRequest, res) => {
     res.status(403).json({ message: '관리자만 삭제할 수 있습니다.' });
     return;
   }
-  removeFiles(existing.attachments);
+  await removeAttachments(existing.attachments);
   res.status(204).send();
 });
 

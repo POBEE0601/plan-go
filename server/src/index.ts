@@ -36,6 +36,12 @@ const { default: app } = await import('./app.js');
 
 const PORT = Number(process.env.PORT) || 3001;
 
-app.listen(PORT, () => {
-  console.log(`plan-go API server running on http://localhost:${PORT}`);
+if (process.env.NODE_ENV === 'production' && !process.env.SUPABASE_SERVICE_ROLE_KEY?.trim()) {
+  console.warn(
+    '경고: SUPABASE_SERVICE_ROLE_KEY가 없습니다. 배포 환경에서 첨부 파일이 유지되지 않습니다.',
+  );
+}
+
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`plan-go API server running on port ${PORT}`);
 });
