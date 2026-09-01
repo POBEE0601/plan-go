@@ -4,14 +4,13 @@ services:
     runtime: node
     plan: free
     region: singapore
-    buildCommand: npm install && npm run build -w server
-    startCommand: npm run start -w server
+    # production 설치에서 tsc가 빠지지 않도록 devDependency 포함
+    buildCommand: npm install --include=dev && npm run build -w server
+    startCommand: node server/dist/index.js
     healthCheckPath: /api/health
     envVars:
       - key: NODE_VERSION
         value: "22"
-      - key: NODE_ENV
-        value: production
       - key: DATABASE_URL
         sync: false
       - key: JWT_SECRET
