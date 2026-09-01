@@ -1,3 +1,4 @@
+// 2026-09-01 모바일: 전체 화면 오버레이, 데스크톱은 우측 정사각
 // 2026-08-31 정사각형 지도 패널 (기본 숨김, 우측 슬롯)
 import { useEffect, useRef } from 'react';
 import {
@@ -47,7 +48,7 @@ export default function SquareMap({ onClose }: SquareMapProps) {
   };
 
   return (
-    <aside className="flex w-[min(100%,340px)] shrink-0 flex-col border-l border-slate-200 bg-white p-3">
+    <aside className="flex shrink-0 flex-col bg-white max-lg:fixed max-lg:inset-0 max-lg:z-50 max-lg:p-4 max-lg:pt-[max(1rem,env(safe-area-inset-top))] max-lg:pb-[max(1rem,env(safe-area-inset-bottom))] lg:w-[min(100%,340px)] lg:border-l lg:border-slate-200 lg:p-3">
       <div className="mb-2 flex items-center justify-between">
         <p className="flex items-center gap-1.5 text-sm font-semibold text-slate-700">
           <MapIcon className="h-4 w-4 text-primary-600" />
@@ -56,14 +57,14 @@ export default function SquareMap({ onClose }: SquareMapProps) {
         <button
           type="button"
           onClick={onClose}
-          className="rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+          className="flex h-10 w-10 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-600"
           aria-label="지도 닫기"
         >
           <X className="h-4 w-4" />
         </button>
       </div>
 
-      <div className="relative aspect-square w-full overflow-hidden rounded-xl border border-slate-200 bg-slate-100 shadow-sm">
+      <div className="relative min-h-0 w-full flex-1 overflow-hidden rounded-xl border border-slate-200 bg-slate-100 shadow-sm lg:aspect-square lg:flex-none">
         {loadError ? (
           <div className="flex h-full items-center justify-center px-3 text-center text-xs text-red-600">
             Maps 로드 실패. API 키를 확인하세요.
@@ -111,7 +112,7 @@ export default function SquareMap({ onClose }: SquareMapProps) {
         )}
       </div>
 
-      <p className="mt-2 text-[11px] leading-relaxed text-slate-400">
+      <p className="mt-2 hidden text-[11px] leading-relaxed text-slate-400 lg:block">
         정사각 지도입니다. 검색하거나 장소를 선택하면 중심이 이동합니다.
       </p>
     </aside>

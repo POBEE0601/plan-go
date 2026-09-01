@@ -1,3 +1,4 @@
+// 2026-09-01 로딩 화면 모바일 높이
 // 2026-08-31 라우팅: 홈·인증·대시보드·초대·고객게시판·공지·배포
 import { useEffect } from 'react';
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
@@ -22,7 +23,7 @@ function AppRoutes() {
 
   if (isLoading) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-slate-50">
+      <div className="flex min-h-dvh items-center justify-center bg-slate-50">
         <Loader2 className="h-8 w-8 animate-spin text-primary-600" />
       </div>
     );

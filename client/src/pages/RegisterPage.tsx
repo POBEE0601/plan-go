@@ -1,3 +1,4 @@
+// 2026-09-01 모바일 여백 조정
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { AlertCircle, Loader2, MapPin, UserPlus } from 'lucide-react';
@@ -43,7 +44,7 @@ export default function RegisterPage() {
   const displayError = localError || error;
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-gradient-to-b from-primary-50 to-slate-50 px-4 py-10">
+    <div className="flex min-h-dvh items-center justify-center bg-gradient-to-b from-primary-50 to-slate-50 px-4 py-10">
       <div className="w-full max-w-md">
         <div className="mb-8 text-center">
           <Link to="/" className="inline-flex items-center gap-2">
@@ -59,7 +60,7 @@ export default function RegisterPage() {
 
         <form
           onSubmit={handleSubmit}
-          className="rounded-2xl border border-slate-200 bg-white p-8 shadow-sm"
+          className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-8"
         >
           <h1 className="mb-6 flex items-center gap-2 text-xl font-bold text-slate-800">
             <UserPlus className="h-5 w-5 text-primary-600" />

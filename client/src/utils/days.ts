@@ -1,3 +1,4 @@
+// 2026-09-01 카테고리 이모지 배지
 // 2026-08-31 일자 계산 유틸
 export const getDayCount = (startDate: string, endDate: string): number => {
   const start = new Date(`${startDate}T00:00:00`);
@@ -15,13 +16,33 @@ export const getDateForDay = (startDate: string, dayIndex: number): string => {
   return `${y}-${m}-${d}`;
 };
 
-export const categoryLabel = (category: string): string => {
-  const map: Record<string, string> = {
-    attraction: '관광',
-    restaurant: '맛집',
-    hotel: '숙소',
-    cafe: '카페',
-    other: '기타',
-  };
-  return map[category] ?? category;
+export const CATEGORY_META: Record<
+  string,
+  { emoji: string; label: string }
+> = {
+  attraction: { emoji: '🎡', label: '관광' },
+  restaurant: { emoji: '🍽️', label: '맛집' },
+  hotel: { emoji: '🏨', label: '숙소' },
+  cafe: { emoji: '☕', label: '카페' },
+  other: { emoji: '📍', label: '기타' },
+};
+
+export const CATEGORY_ORDER = [
+  'attraction',
+  'restaurant',
+  'cafe',
+  'hotel',
+  'other',
+] as const;
+
+export const categoryLabel = (category: string): string =>
+  CATEGORY_META[category]?.label ?? category;
+
+export const categoryEmoji = (category: string): string =>
+  CATEGORY_META[category]?.emoji ?? '📍';
+
+export const categoryBadge = (category: string): string => {
+  const meta = CATEGORY_META[category];
+  if (!meta) return category;
+  return `${meta.emoji} ${meta.label}`;
 };

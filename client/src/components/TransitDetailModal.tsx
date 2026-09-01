@@ -1,3 +1,4 @@
+// 2026-09-01 모바일: 하단 시트 레이아웃
 // 2026-08-31 상세 길찾기: 실제 Directions + 지도 경로 + 스텝 스크롤 연동
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { GoogleMap, Marker, Polyline } from '@react-google-maps/api';
@@ -196,9 +197,9 @@ export default function TransitDetailModal({
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-3">
-      <div className="flex h-[88vh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl bg-white shadow-xl">
-        <div className="flex items-start justify-between border-b border-slate-100 px-5 py-4">
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-0 sm:items-center sm:p-3">
+      <div className="flex h-[92dvh] w-full max-w-5xl flex-col overflow-hidden rounded-t-2xl bg-white shadow-xl sm:h-[88vh] sm:rounded-2xl">
+        <div className="flex items-start justify-between border-b border-slate-100 px-4 py-3 sm:px-5 sm:py-4">
           <div className="min-w-0">
             <h2 className="text-lg font-bold text-slate-800">상세 길찾기</h2>
             <p className="mt-1 flex items-center gap-1 truncate text-sm text-slate-500">
@@ -211,13 +212,13 @@ export default function TransitDetailModal({
           <button
             type="button"
             onClick={onClose}
-            className="rounded p-1 text-slate-400 hover:bg-slate-100"
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100"
           >
             <X className="h-5 w-5" />
           </button>
         </div>
 
-        <div className="flex gap-2 border-b border-slate-100 px-5 py-3">
+        <div className="flex gap-2 border-b border-slate-100 px-3 py-2 sm:px-5 sm:py-3">
           {(['walking', 'transit', 'driving'] as const).map((mode) => {
             const route = routes[mode];
             return (

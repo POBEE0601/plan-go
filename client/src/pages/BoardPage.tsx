@@ -1,3 +1,4 @@
+// 2026-09-01 모바일 헤더 대응
 // 2026-08-31 고객게시판 (로그인 필수, 첨부 미리보기·댓글·좋아요)
 import { useEffect, useState } from 'react';
 import {
@@ -608,7 +609,7 @@ function BoardDetail() {
 
 export default function BoardPage() {
   return (
-    <div className="min-h-screen bg-slate-50">
+    <div className="min-h-dvh bg-slate-50">
       <Header />
       <Routes>
         <Route index element={<BoardList />} />

@@ -1,8 +1,11 @@
+// 2026-09-01 일자 아코디언·단일 작업영역·카테고리 이모지
+// 2026-09-01 모바일: 터치 드래그·삭제 버튼 노출
 // 2026-08-31 장소 풀 + Day 보드 (드래그·버튼)
 import {
   DndContext,
   DragOverlay,
-  PointerSensor,
+  MouseSensor,
+  TouchSensor,
   closestCorners,
   useDroppable,
   useSensor,
@@ -16,9 +19,11 @@ import {
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { Fragment, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useState } from 'react';
 import {
   CalendarDays,
+  ChevronDown,
+  ChevronUp,
   GripVertical,
   MapPin,
   Plus,
@@ -27,12 +32,16 @@ import {
   X,
 } from 'lucide-react';
 import { useTravelStore } from '../store/useTravelStore';
+import { usePlanUiStore } from '../store/usePlanUiStore';
 import {
+  CATEGORY_ORDER,
+  categoryBadge,
+  categoryEmoji,
   categoryLabel,
   getDateForDay,
   getDayCount,
 } from '../utils/days';
-import type { DayAssignment, Place } from '../types/travel';
+import type { DayAssignment, Place, PlaceCategory } from '../types/travel';
 import TransitHint from './TransitHint';
 
 interface PlacePoolBoardProps {
@@ -47,23 +56,33 @@ function PlaceCardContent({
   compact?: boolean;
 }) {
   return (
-    <div className="min-w-0 flex-1">
-      <p className={`truncate font-medium text-slate-800 ${compact ? 'text-sm' : ''}`}>
-        {place.name}
-      </p>
-      {!compact && (
-        <p className="truncate text-xs text-slate-400">{place.address}</p>
-      )}
-      <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[10px] text-slate-500">
-        <span className="rounded bg-slate-100 px-1.5 py-0.5">
-          {categoryLabel(place.category)}
-        </span>
-        {place.rating != null && (
-          <span className="flex items-center gap-0.5">
-            <Star className="h-2.5 w-2.5 fill-amber-400 text-amber-400" />
-            {place.rating}
-          </span>
+    <div className="flex min-w-0 flex-1 items-start gap-2">
+      <span
+        className={`shrink-0 leading-none ${compact ? 'text-lg' : 'text-2xl'}`}
+        title={categoryLabel(place.category)}
+      >
+        {categoryEmoji(place.category)}
+      </span>
+      <div className="min-w-0 flex-1">
+        <p
+          className={`truncate font-medium text-slate-800 ${compact ? 'text-sm' : ''}`}
+        >
+          {place.name}
+        </p>
+        {!compact && (
+          <p className="truncate text-xs text-slate-400">{place.address}</p>
         )}
+        <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[10px] text-slate-500">
+          <span className="rounded bg-slate-100 px-1.5 py-0.5">
+            {categoryBadge(place.category)}
+          </span>
+          {place.rating != null && (
+            <span className="flex items-center gap-0.5">
+              <Star className="h-2.5 w-2.5 fill-amber-400 text-amber-400" />
+              {place.rating}
+            </span>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -107,7 +126,7 @@ function SortableAssignment({
         {canWrite && (
           <button
             type="button"
-            className="mt-0.5 cursor-grab text-slate-300 active:cursor-grabbing"
+            className="mt-0.5 min-h-10 min-w-10 cursor-grab touch-none p-1.5 text-slate-300 active:cursor-grabbing"
             {...attributes}
             {...listeners}
           >
@@ -119,13 +138,13 @@ function SortableAssignment({
           <button
             type="button"
             onClick={onRemove}
-            className="rounded p-0.5 text-slate-300 opacity-0 hover:text-red-500 group-hover:opacity-100"
+            className="rounded p-1.5 text-slate-400 hover:text-red-500 md:opacity-0 md:group-hover:opacity-100"
           >
             <X className="h-3.5 w-3.5" />
           </button>
         )}
       </div>
-      {canWrite && (
+      {canWrite && dayCount > 1 && (
         <div className="mt-1.5 flex flex-wrap gap-1 pl-5">
           {Array.from({ length: dayCount }, (_, i) => i + 1)
             .filter((d) => d !== assignment.dayIndex)
@@ -134,9 +153,9 @@ function SortableAssignment({
                 key={d}
                 type="button"
                 onClick={() => onMove(d)}
-                className="rounded bg-slate-50 px-1.5 py-0.5 text-[10px] text-slate-500 hover:bg-primary-50 hover:text-primary-700"
+                className="min-h-8 rounded bg-slate-50 px-2 py-1 text-[10px] text-slate-500 hover:bg-primary-50 hover:text-primary-700"
               >
-                → Day {d}
+                → {d}일차
               </button>
             ))}
         </div>
@@ -148,14 +167,14 @@ function SortableAssignment({
 function DraggablePoolPlace({
   place,
   canWrite,
-  dayCount,
+  activeDay,
   onDelete,
   onAssign,
   onFocus,
 }: {
   place: Place;
   canWrite: boolean;
-  dayCount: number;
+  activeDay: number;
   onDelete: () => void;
   onAssign: (day: number) => void;
   onFocus: () => void;
@@ -183,7 +202,7 @@ function DraggablePoolPlace({
         {canWrite && (
           <button
             type="button"
-            className="mt-0.5 cursor-grab text-slate-300"
+            className="mt-0.5 min-h-10 min-w-10 cursor-grab touch-none p-1.5 text-slate-300"
             {...attributes}
             {...listeners}
           >
@@ -197,32 +216,27 @@ function DraggablePoolPlace({
           <button
             type="button"
             onClick={onDelete}
-            className="rounded p-1 text-slate-300 opacity-0 hover:bg-red-50 hover:text-red-500 group-hover:opacity-100"
+            className="rounded p-2 text-slate-400 hover:bg-red-50 hover:text-red-500 md:opacity-0 md:group-hover:opacity-100"
           >
             <Trash2 className="h-3.5 w-3.5" />
           </button>
         )}
       </div>
       {canWrite && (
-        <div className="mt-2 flex flex-wrap gap-1 pl-6">
-          {Array.from({ length: dayCount }, (_, i) => i + 1).map((d) => (
-            <button
-              key={d}
-              type="button"
-              onClick={() => onAssign(d)}
-              className="flex items-center gap-0.5 rounded-md bg-primary-50 px-2 py-1 text-[11px] font-medium text-primary-700 hover:bg-primary-100"
-            >
-              <Plus className="h-3 w-3" />
-              Day {d}
-            </button>
-          ))}
-        </div>
+        <button
+          type="button"
+          onClick={() => onAssign(activeDay)}
+          className="mt-2 flex min-h-9 w-full items-center justify-center gap-1 rounded-md bg-primary-50 px-2.5 py-1.5 text-[12px] font-medium text-primary-700 hover:bg-primary-100"
+        >
+          <Plus className="h-3.5 w-3.5" />
+          {activeDay}일차에 추가
+        </button>
       )}
     </div>
   );
 }
 
-function DayColumn({
+function DayWorkPanel({
   dayIndex,
   date,
   assignments,
@@ -242,42 +256,31 @@ function DayColumn({
     data: { type: 'day', dayIndex },
   });
   const { removeFromDay, moveAssignment } = useTravelStore();
-
   const ids = assignments.map((a) => a.id);
 
   return (
     <div
       ref={setNodeRef}
-      className={`flex w-64 shrink-0 flex-col rounded-xl border ${
-        isOver ? 'border-primary-400 bg-primary-50/50' : 'border-slate-200 bg-slate-50'
+      className={`flex min-h-0 flex-1 flex-col rounded-xl border ${
+        isOver
+          ? 'border-primary-400 bg-primary-50/50'
+          : 'border-slate-200 bg-slate-50'
       }`}
     >
-      <div className="flex items-center gap-2 border-b border-slate-200 px-3 py-2">
-        <CalendarDays className="h-4 w-4 text-primary-600" />
-        <div>
-          <p className="text-sm font-semibold text-slate-800">Day {dayIndex}</p>
-          <p className="text-[11px] text-slate-400">{date}</p>
-        </div>
-        <span className="ml-auto text-xs text-slate-400">{assignments.length}</span>
-      </div>
-
       <SortableContext items={ids} strategy={verticalListSortingStrategy}>
-        <div className="flex flex-1 flex-col gap-2 overflow-y-auto p-2" style={{ minHeight: 120 }}>
+        <div className="flex flex-1 flex-col gap-2 overflow-y-auto p-3">
           {assignments.length === 0 && (
-            <p className="py-6 text-center text-xs text-slate-400">
-              장소를 드래그하거나
-              <br />
-              + Day 버튼으로 추가
+            <p className="py-10 text-center text-sm text-slate-400">
+              {canWrite
+                ? '장소 풀에서 드래그하거나 추가 버튼으로 이 날에 담으세요'
+                : '아직 배정된 장소가 없습니다'}
             </p>
           )}
           {assignments.map((a, index) => {
             const place = placesById[a.placeId];
             if (!place) return null;
             const prev =
-              index > 0
-                ? placesById[assignments[index - 1].placeId]
-                : null;
-            // 길찾기는 sortable 카드 밖에 두어 순서 변경 시 구간이 확실히 갱신되게 함
+              index > 0 ? placesById[assignments[index - 1].placeId] : null;
             return (
               <Fragment key={a.id}>
                 {prev && (
@@ -301,6 +304,9 @@ function DayColumn({
           })}
         </div>
       </SortableContext>
+      <p className="sr-only">
+        {dayIndex}일차 {date}
+      </p>
     </div>
   );
 }
@@ -315,16 +321,36 @@ export default function PlacePoolBoard({ canWrite }: PlacePoolBoardProps) {
     setMapCenter,
     setSelectedMapPlace,
   } = useTravelStore();
+  const { activeDay, setActiveDay } = usePlanUiStore();
 
   const [activeId, setActiveId] = useState<string | null>(null);
+  const [poolOpen, setPoolOpen] = useState(true);
+  const [poolFilter, setPoolFilter] = useState<PlaceCategory | 'all'>('all');
+  const [isDesktop, setIsDesktop] = useState(
+    () => window.matchMedia('(min-width: 1024px)').matches,
+  );
+
+  useEffect(() => {
+    const mq = window.matchMedia('(min-width: 1024px)');
+    const onChange = () => setIsDesktop(mq.matches);
+    mq.addEventListener('change', onChange);
+    return () => mq.removeEventListener('change', onChange);
+  }, []);
 
   const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(MouseSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(TouchSensor, {
+      activationConstraint: { delay: 220, tolerance: 8 },
+    }),
   );
 
   const dayCount = selectedPlan
     ? getDayCount(selectedPlan.startDate, selectedPlan.endDate)
     : 0;
+
+  useEffect(() => {
+    if (dayCount > 0 && activeDay > dayCount) setActiveDay(1);
+  }, [activeDay, dayCount, setActiveDay]);
 
   const placesById = useMemo(() => {
     const map: Record<string, Place> = {};
@@ -334,10 +360,24 @@ export default function PlacePoolBoard({ canWrite }: PlacePoolBoardProps) {
     return map;
   }, [selectedPlan]);
 
+  const filteredPlaces = useMemo(() => {
+    const places = selectedPlan?.places ?? [];
+    if (poolFilter === 'all') return places;
+    return places.filter((p) => p.category === poolFilter);
+  }, [selectedPlan, poolFilter]);
+
   const poolIds = useMemo(
-    () => (selectedPlan?.places ?? []).map((p) => `pool-${p.id}`),
-    [selectedPlan],
+    () => filteredPlaces.map((p) => `pool-${p.id}`),
+    [filteredPlaces],
   );
+
+  const categoryCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    selectedPlan?.places.forEach((p) => {
+      counts[p.category] = (counts[p.category] ?? 0) + 1;
+    });
+    return counts;
+  }, [selectedPlan]);
 
   if (!selectedPlan) return null;
 
@@ -356,7 +396,6 @@ export default function PlacePoolBoard({ canWrite }: PlacePoolBoardProps) {
     const overId = String(over.id);
     const overData = over.data.current;
 
-    // 장소 풀 → Day
     if (activeData?.type === 'pool') {
       const place = activeData.place as Place;
       let targetDay: number | null = null;
@@ -373,7 +412,6 @@ export default function PlacePoolBoard({ canWrite }: PlacePoolBoardProps) {
       return;
     }
 
-    // assignment 이동 / 정렬
     if (activeData?.type === 'assignment') {
       const assignment = activeData.assignment as DayAssignment;
 
@@ -391,7 +429,6 @@ export default function PlacePoolBoard({ canWrite }: PlacePoolBoardProps) {
         return;
       }
 
-      // 같은 Day 내 순서
       const dayItems = selectedPlan.dayAssignments
         .filter((d) => d.dayIndex === targetDay)
         .sort((a, b) => a.order - b.order);
@@ -417,38 +454,80 @@ export default function PlacePoolBoard({ canWrite }: PlacePoolBoardProps) {
       return placesById[activeId.replace('pool-', '')] ?? null;
     }
     const a = selectedPlan.dayAssignments.find((d) => d.id === activeId);
-    return a ? placesById[a.placeId] ?? null : null;
+    return a ? (placesById[a.placeId] ?? null) : null;
   })();
 
-  return (
-    <DndContext
-      sensors={sensors}
-      collisionDetection={closestCorners}
-      onDragStart={handleDragStart}
-      onDragEnd={handleDragEnd}
-    >
-      <div className="flex h-full flex-col gap-3 overflow-hidden p-4">
-        <section className="shrink-0">
-          <h3 className="mb-2 flex items-center gap-2 text-sm font-semibold text-slate-700">
-            <MapPin className="h-4 w-4 text-primary-600" />
-            장소 풀
-            <span className="font-normal text-slate-400">
-              ({selectedPlan.places.length})
-            </span>
-          </h3>
+  const assignmentsFor = (day: number) =>
+    selectedPlan.dayAssignments
+      .filter((d) => d.dayIndex === day)
+      .sort((a, b) => a.order - b.order);
+
+  const poolSection = (
+    <section className="shrink-0">
+      <button
+        type="button"
+        onClick={() => setPoolOpen((v) => !v)}
+        className="mb-2 flex w-full items-center gap-2 text-left text-sm font-semibold text-slate-700"
+      >
+        <MapPin className="h-4 w-4 text-primary-600" />
+        장소 풀
+        <span className="font-normal text-slate-400">
+          ({selectedPlan.places.length})
+        </span>
+        {poolOpen ? (
+          <ChevronUp className="ml-auto h-4 w-4 text-slate-400" />
+        ) : (
+          <ChevronDown className="ml-auto h-4 w-4 text-slate-400" />
+        )}
+      </button>
+      {poolOpen && (
+        <>
+          <div className="mb-2 flex gap-1 overflow-x-auto pb-1">
+            <button
+              type="button"
+              onClick={() => setPoolFilter('all')}
+              className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-medium ${
+                poolFilter === 'all'
+                  ? 'bg-slate-800 text-white'
+                  : 'bg-slate-100 text-slate-600'
+              }`}
+            >
+              전체
+            </button>
+            {CATEGORY_ORDER.map((cat) => {
+              const count = categoryCounts[cat] ?? 0;
+              if (!count) return null;
+              return (
+                <button
+                  key={cat}
+                  type="button"
+                  onClick={() => setPoolFilter(cat)}
+                  className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-medium ${
+                    poolFilter === cat
+                      ? 'bg-slate-800 text-white'
+                      : 'bg-slate-100 text-slate-600'
+                  }`}
+                >
+                  {categoryBadge(cat)} {count}
+                </button>
+              );
+            })}
+          </div>
           <SortableContext items={poolIds} strategy={verticalListSortingStrategy}>
-            <div className="grid max-h-48 gap-2 overflow-y-auto sm:grid-cols-2 lg:grid-cols-3">
-              {selectedPlan.places.length === 0 ? (
+            <div className="grid max-h-40 gap-2 overflow-y-auto sm:max-h-52 lg:grid-cols-2 xl:grid-cols-3">
+              {filteredPlaces.length === 0 ? (
                 <p className="col-span-full py-6 text-center text-sm text-slate-400">
-                  상단에서 장소를 검색해 풀에 추가하세요
+                  {selectedPlan.places.length === 0
+                    ? '상단에서 장소를 검색해 풀에 추가하세요'
+                    : '이 카테고리의 장소가 없습니다'}
                 </p>
               ) : (
-                selectedPlan.places.map((place) => (
+                filteredPlaces.map((place) => (
                   <DraggablePoolPlace
                     key={place.id}
                     place={place}
                     canWrite={canWrite}
-                    dayCount={dayCount}
+                    activeDay={activeDay}
                     onDelete={() => deletePlace(place.id)}
                     onAssign={(day) => assignToDay(place.id, day)}
                     onFocus={() => {
@@ -460,26 +539,109 @@ export default function PlacePoolBoard({ canWrite }: PlacePoolBoardProps) {
               )}
             </div>
           </SortableContext>
-        </section>
+        </>
+      )}
+    </section>
+  );
 
-        <section className="min-h-0 flex-1 overflow-hidden">
-          <h3 className="mb-2 text-sm font-semibold text-slate-700">일자별 일정</h3>
-          <div className="flex h-[calc(100%-1.5rem)] gap-3 overflow-x-auto pb-2">
-            {Array.from({ length: dayCount }, (_, i) => i + 1).map((day) => (
-              <DayColumn
-                key={day}
-                dayIndex={day}
-                date={getDateForDay(selectedPlan.startDate, day)}
-                assignments={selectedPlan.dayAssignments
-                  .filter((d) => d.dayIndex === day)
-                  .sort((a, b) => a.order - b.order)}
-                placesById={placesById}
-                canWrite={canWrite}
-                dayCount={dayCount}
-              />
-            ))}
+  return (
+    <DndContext
+      sensors={sensors}
+      collisionDetection={closestCorners}
+      onDragStart={handleDragStart}
+      onDragEnd={handleDragEnd}
+    >
+      <div className="flex h-full min-h-0 flex-col overflow-hidden">
+        {isDesktop ? (
+          <section className="order-2 flex min-h-0 flex-1 flex-col px-4 pb-4">
+            <h3 className="mb-2 flex items-center gap-2 text-sm font-semibold text-slate-700">
+              <CalendarDays className="h-4 w-4 text-primary-600" />
+              {activeDay}일차 작업
+              <span className="font-normal text-slate-400">
+                {getDateForDay(selectedPlan.startDate, activeDay)} ·{' '}
+                {assignmentsFor(activeDay).length}곳
+              </span>
+            </h3>
+            <DayWorkPanel
+              dayIndex={activeDay}
+              date={getDateForDay(selectedPlan.startDate, activeDay)}
+              assignments={assignmentsFor(activeDay)}
+              placesById={placesById}
+              canWrite={canWrite}
+              dayCount={dayCount}
+            />
+          </section>
+        ) : (
+          <div className="order-1 min-h-0 flex-1 space-y-2 overflow-y-auto p-3">
+            {Array.from({ length: dayCount }, (_, i) => i + 1).map((day) => {
+              const open = activeDay === day;
+              const items = assignmentsFor(day);
+              return (
+                <div
+                  key={day}
+                  className={`overflow-hidden rounded-xl border ${
+                    open
+                      ? 'border-primary-300 bg-white'
+                      : 'border-slate-200 bg-slate-50'
+                  }`}
+                >
+                  <button
+                    type="button"
+                    onClick={() => setActiveDay(day)}
+                    className="flex w-full items-center gap-3 px-3 py-3 text-left"
+                  >
+                    <span
+                      className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-sm font-bold ${
+                        open
+                          ? 'bg-primary-600 text-white'
+                          : 'bg-white text-slate-600 ring-1 ring-slate-200'
+                      }`}
+                    >
+                      {day}
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-semibold text-slate-800">
+                        {day}일차
+                      </p>
+                      <p className="text-[11px] text-slate-400">
+                        {getDateForDay(selectedPlan.startDate, day)} · {items.length}
+                        곳
+                        {items.slice(0, 4).map((a) => {
+                          const p = placesById[a.placeId];
+                          return p ? ` ${categoryEmoji(p.category)}` : '';
+                        })}
+                      </p>
+                    </div>
+                    <ChevronDown
+                      className={`h-4 w-4 text-slate-400 transition ${
+                        open ? 'rotate-180' : ''
+                      }`}
+                    />
+                  </button>
+                  {open && (
+                    <div className="border-t border-slate-100 px-2 pb-2 pt-1">
+                      <div className="flex max-h-[45vh] min-h-[12rem] flex-col">
+                        <DayWorkPanel
+                          dayIndex={day}
+                          date={getDateForDay(selectedPlan.startDate, day)}
+                          assignments={items}
+                          placesById={placesById}
+                          canWrite={canWrite}
+                          dayCount={dayCount}
+                        />
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
-        </section>
+        )}
+
+        {/* 장소 풀: 모바일 하단, PC 상단 */}
+        <div className="order-2 shrink-0 border-t border-slate-200 bg-white p-3 lg:order-1 lg:border-t-0 lg:px-4 lg:pb-0 lg:pt-4">
+          {poolSection}
+        </div>
       </div>
 
       <DragOverlay>

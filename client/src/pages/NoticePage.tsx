@@ -1,3 +1,4 @@
+// 2026-09-01 모바일 헤더 대응
 // 2026-08-31 공지사항 게시판 (비회원 조회, 관리자만 작성, 조회수)
 import { useEffect, useState } from 'react';
 import {
@@ -485,7 +486,7 @@ function NoticeDetail() {
 
 export default function NoticePage() {
   return (
-    <div className="min-h-screen bg-slate-50">
+    <div className="min-h-dvh bg-slate-50">
       <Header />
       <Routes>
         <Route index element={<NoticeList />} />

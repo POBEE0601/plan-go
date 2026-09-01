@@ -1,3 +1,4 @@
+// 2026-09-01 모바일: 하단 시트·세로 폼
 // 2026-08-31 이메일·링크 초대 모달
 import { useState } from 'react';
 import {
@@ -86,8 +87,8 @@ export default function InviteModal({ open, onClose }: InviteModalProps) {
   );
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-      <div className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-2xl bg-white shadow-xl">
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-0 sm:items-center sm:p-4">
+      <div className="max-h-[92dvh] w-full max-w-lg overflow-y-auto rounded-t-2xl bg-white shadow-xl sm:max-h-[90vh] sm:rounded-2xl">
         <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
           <h2 className="flex items-center gap-2 text-lg font-bold text-slate-800">
             <UserPlus className="h-5 w-5 text-primary-600" />
@@ -96,7 +97,7 @@ export default function InviteModal({ open, onClose }: InviteModalProps) {
           <button
             type="button"
             onClick={onClose}
-            className="rounded p-1 text-slate-400 hover:bg-slate-100"
+            className="flex h-10 w-10 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100"
           >
             <X className="h-5 w-5" />
           </button>
@@ -116,13 +117,13 @@ export default function InviteModal({ open, onClose }: InviteModalProps) {
               required
               className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-primary-500"
             />
-            <div className="flex gap-2">
+            <div className="flex flex-col gap-2 sm:flex-row">
               <select
                 value={role}
                 onChange={(e) =>
                   setRole(e.target.value as 'editor' | 'viewer')
                 }
-                className="rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                className="rounded-lg border border-slate-200 px-3 py-2.5 text-sm sm:py-2"
               >
                 <option value="editor">쓰기 (편집 가능)</option>
                 <option value="viewer">읽기 (조회만)</option>
@@ -142,13 +143,13 @@ export default function InviteModal({ open, onClose }: InviteModalProps) {
               <Link2 className="mr-1 inline h-4 w-4" />
               초대 링크 생성
             </p>
-            <div className="flex gap-2">
+            <div className="flex flex-col gap-2 sm:flex-row">
               <select
                 value={linkRole}
                 onChange={(e) =>
                   setLinkRole(e.target.value as 'editor' | 'viewer')
                 }
-                className="rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                className="rounded-lg border border-slate-200 px-3 py-2.5 text-sm sm:py-2"
               >
                 <option value="viewer">읽기 링크</option>
                 <option value="editor">쓰기 링크</option>

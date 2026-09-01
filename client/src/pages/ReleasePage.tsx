@@ -1,3 +1,4 @@
+// 2026-09-01 모바일 헤더 대응
 // 2026-08-31 배포게시판 (비회원 조회, 관리자만 작성, 목록: 일시|제목|배포상태)
 import { useEffect, useState } from 'react';
 import {
@@ -558,7 +559,7 @@ function ReleaseDetail() {
 
 export default function ReleasePage() {
   return (
-    <div className="min-h-screen bg-slate-50">
+    <div className="min-h-dvh bg-slate-50">
       <Header />
       <Routes>
         <Route index element={<ReleaseList />} />

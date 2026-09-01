@@ -1,26 +1,41 @@
+// 2026-09-01 PC 메뉴 접기 + 일자 아코디언
+// 2026-09-01 모바일: 드로어로 전환, 계획 선택 시 자동 닫힘
 // 2026-08-31 여행 계획 생성 시 지역 선택 지원
 import { useEffect, useState } from 'react';
 import {
   Calendar,
   Loader2,
   MapPin,
+  PanelLeftClose,
+  PanelLeftOpen,
   Plus,
   Search,
   Trash2,
   X,
 } from 'lucide-react';
+import DayAccordion from './DayAccordion';
 import { useTravelStore } from '../store/useTravelStore';
+import { usePlanUiStore } from '../store/usePlanUiStore';
 import { placesApi } from '../utils/api';
+import { getDayCount } from '../utils/days';
 import type { PlaceSearchResult } from '../types/travel';
 
-export default function SidePanel() {
+interface SidePanelProps {
+  open?: boolean;
+  onClose?: () => void;
+}
+
+export default function SidePanel({ open = true, onClose }: SidePanelProps) {
   const {
     travelPlans,
+    selectedPlan,
     selectedPlanId,
     selectPlan,
     addTravelPlan,
     deleteTravelPlan,
   } = useTravelStore();
+  const { activeDay, setActiveDay, sidebarCollapsed, toggleSidebar } =
+    usePlanUiStore();
 
   const [showForm, setShowForm] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -90,8 +105,10 @@ export default function SidePanel() {
         regionLat: selectedRegion.lat,
         regionLng: selectedRegion.lng,
       });
+      setActiveDay(1);
       resetForm();
       setShowForm(false);
+      onClose?.();
     } catch {
       // store에서 error 상태 처리
     } finally {
@@ -117,18 +134,89 @@ export default function SidePanel() {
     setRegionError('');
   };
 
+  const dayCount = selectedPlan
+    ? getDayCount(selectedPlan.startDate, selectedPlan.endDate)
+    : 0;
+
+  // PC에서 접힌 레일: 일자 전환만 빠르게. 모바일은 항상 전체 패널
   return (
-    <aside className="flex w-72 shrink-0 flex-col border-r border-slate-200 bg-white">
+    <>
+      {sidebarCollapsed && (
+        <aside className="hidden w-14 shrink-0 flex-col border-r border-slate-200 bg-white lg:flex">
+          <button
+            type="button"
+            onClick={toggleSidebar}
+            className="flex h-12 w-full items-center justify-center text-slate-500 hover:bg-slate-50"
+            aria-label="메뉴 펼치기"
+          >
+            <PanelLeftOpen className="h-5 w-5" />
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              toggleSidebar();
+              setShowForm(true);
+            }}
+            className="mx-auto flex h-9 w-9 items-center justify-center rounded-lg bg-primary-600 text-white hover:bg-primary-700"
+            aria-label="새 계획"
+          >
+            <Plus className="h-4 w-4" />
+          </button>
+          <div className="mt-3 flex flex-1 flex-col items-center gap-1 overflow-y-auto px-1 pb-3">
+            {Array.from({ length: dayCount }, (_, i) => i + 1).map((day) => (
+              <button
+                key={day}
+                type="button"
+                onClick={() => setActiveDay(day)}
+                className={`flex h-9 w-9 items-center justify-center rounded-lg text-xs font-bold ${
+                  activeDay === day
+                    ? 'bg-primary-600 text-white'
+                    : 'text-slate-600 hover:bg-slate-100'
+                }`}
+                aria-label={`${day}일차`}
+              >
+                {day}
+              </button>
+            ))}
+          </div>
+        </aside>
+      )}
+
+    <aside
+      className={`flex w-72 shrink-0 flex-col border-r border-slate-200 bg-white transition-transform duration-200 max-lg:fixed max-lg:inset-y-0 max-lg:left-0 max-lg:z-40 max-lg:shadow-xl max-lg:pt-[env(safe-area-inset-top)] max-lg:pb-[env(safe-area-inset-bottom)] ${
+        sidebarCollapsed ? 'lg:hidden' : ''
+      } ${open ? 'translate-x-0' : 'max-lg:-translate-x-full'}`}
+    >
       <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
         <h2 className="text-sm font-semibold text-slate-700">여행 계획</h2>
-        <button
-          type="button"
-          onClick={() => setShowForm(true)}
-          className="flex items-center gap-1 rounded-lg bg-primary-600 px-2.5 py-1.5 text-xs font-medium text-white transition hover:bg-primary-700"
-        >
-          <Plus className="h-3.5 w-3.5" />
-          새 계획
-        </button>
+        <div className="flex items-center gap-1">
+          <button
+            type="button"
+            onClick={() => setShowForm(true)}
+            className="flex min-h-10 items-center gap-1 rounded-lg bg-primary-600 px-2.5 py-1.5 text-xs font-medium text-white transition hover:bg-primary-700"
+          >
+            <Plus className="h-3.5 w-3.5" />
+            새 계획
+          </button>
+          <button
+            type="button"
+            onClick={toggleSidebar}
+            className="hidden h-10 w-10 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 lg:flex"
+            aria-label="메뉴 접기"
+          >
+            <PanelLeftClose className="h-5 w-5" />
+          </button>
+          {onClose && (
+            <button
+              type="button"
+              onClick={onClose}
+              className="flex h-10 w-10 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 lg:hidden"
+              aria-label="여행 계획 닫기"
+            >
+              <X className="h-5 w-5" />
+            </button>
+          )}
+        </div>
       </div>
 
       {showForm && (
@@ -241,7 +329,7 @@ export default function SidePanel() {
         </div>
       )}
 
-      <ul className="flex-1 overflow-y-auto p-2">
+      <ul className="max-h-48 shrink-0 overflow-y-auto p-2 lg:max-h-[42%]">
         {travelPlans.length === 0 ? (
           <li className="px-3 py-8 text-center text-sm text-slate-400">
             아직 여행 계획이 없습니다.
@@ -253,7 +341,11 @@ export default function SidePanel() {
             <li key={plan.id}>
               <button
                 type="button"
-                onClick={() => void selectPlan(plan.id)}
+                onClick={() => {
+                  void selectPlan(plan.id);
+                  setActiveDay(1);
+                  onClose?.();
+                }}
                 className={`group mb-1 flex w-full items-start justify-between rounded-lg px-3 py-2.5 text-left transition ${
                   selectedPlanId === plan.id
                     ? 'bg-primary-50 text-primary-800 ring-1 ring-primary-200'
@@ -273,14 +365,14 @@ export default function SidePanel() {
                     {plan.startDate} ~ {plan.endDate}
                   </p>
                   <p className="mt-0.5 text-xs text-slate-400">
-                    장소 {(plan.places ?? []).length}개 · Day 배정{' '}
+                    장소 {(plan.places ?? []).length}개 · 배정{' '}
                     {(plan.dayAssignments ?? []).length}개
                   </p>
                 </div>
                 <button
                   type="button"
                   onClick={(e) => handleDelete(e, plan.id)}
-                  className="ml-1 shrink-0 rounded p-1 text-slate-300 opacity-0 transition group-hover:opacity-100 hover:bg-red-50 hover:text-red-500"
+                  className="ml-1 shrink-0 rounded p-2 text-slate-400 transition hover:bg-red-50 hover:text-red-500 md:opacity-0 md:group-hover:opacity-100"
                   aria-label="여행 계획 삭제"
                 >
                   <Trash2 className="h-3.5 w-3.5" />
@@ -290,6 +382,16 @@ export default function SidePanel() {
           ))
         )}
       </ul>
+
+      <div className="flex min-h-0 flex-1 flex-col border-t border-slate-200">
+        <p className="px-4 py-2 text-xs font-semibold uppercase tracking-wide text-slate-400">
+          일자별 일정
+        </p>
+        <div className="min-h-0 flex-1 overflow-y-auto">
+          <DayAccordion onPickDay={onClose} />
+        </div>
+      </div>
     </aside>
+    </>
   );
 }
