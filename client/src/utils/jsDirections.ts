@@ -1,12 +1,12 @@
-// 2026-08-31 Maps JS DirectionsService로 실제 경로 조회 (추정 없음)
+// 2026-09-01 Directions 1회만·진행중 요청 합치기·세션 캐시 (자동 재시도 제거)
 import type { Place } from '../types/travel';
 
 export type TravelModeKey = 'walking' | 'transit' | 'driving';
 
 export interface JsRouteStep {
   instruction: string;
-  distanceText: string;
   durationText: string;
+  distanceText: string;
   travelMode: string;
   path: google.maps.LatLngLiteral[];
   start: google.maps.LatLngLiteral;
@@ -30,7 +30,6 @@ export interface JsRouteDetail {
   summary: string;
   steps: JsRouteStep[];
   overviewPath: google.maps.LatLngLiteral[];
-  result: google.maps.DirectionsResult;
   mapsUrl: string;
 }
 
@@ -40,7 +39,11 @@ const MODE_LABEL: Record<TravelModeKey, string> = {
   driving: '차량',
 };
 
+const SESSION_KEY = 'plan-go-dir-cache-v1';
+const SESSION_LIMIT = 80;
+
 const cache = new Map<string, JsRouteDetail | null>();
+const inflight = new Map<string, Promise<JsRouteDetail | null>>();
 
 const stripHtml = (html: string): string =>
   html
@@ -71,6 +74,55 @@ const travelModeOf = (mode: TravelModeKey): google.maps.TravelMode => {
   return google.maps.TravelMode.DRIVING;
 };
 
+const readSessionMap = (): Record<string, JsRouteDetail | null> => {
+  try {
+    const raw = sessionStorage.getItem(SESSION_KEY);
+    if (!raw) return {};
+    return JSON.parse(raw) as Record<string, JsRouteDetail | null>;
+  } catch {
+    return {};
+  }
+};
+
+const writeSession = (key: string, value: JsRouteDetail | null): void => {
+  try {
+    const all = readSessionMap();
+    all[key] = value;
+    const keys = Object.keys(all);
+    if (keys.length > SESSION_LIMIT) {
+      keys.slice(0, keys.length - SESSION_LIMIT).forEach((k) => {
+        delete all[k];
+      });
+    }
+    sessionStorage.setItem(SESSION_KEY, JSON.stringify(all));
+  } catch {
+    // 시크릿/용량 초과 시 메모리 캐시만 사용
+  }
+};
+
+const remember = (key: string, value: JsRouteDetail | null): void => {
+  cache.set(key, value);
+  writeSession(key, value);
+};
+
+/** 네트워크 없이 메모리·세션 캐시만 조회 */
+export const getCachedRoute = (
+  from: Place,
+  to: Place,
+  mode: TravelModeKey,
+): { found: boolean; value: JsRouteDetail | null } => {
+  const key = cacheKey(from, to, mode);
+  if (cache.has(key)) {
+    return { found: true, value: cache.get(key) ?? null };
+  }
+  const stored = readSessionMap()[key];
+  if (stored !== undefined) {
+    cache.set(key, stored);
+    return { found: true, value: stored };
+  }
+  return { found: false, value: null };
+};
+
 export const buildMapsUrl = (
   from: Place,
   to: Place,
@@ -89,10 +141,9 @@ export const buildMapsUrl = (
 };
 
 const requestRoute = (
-  origin: string | google.maps.Place | google.maps.LatLngLiteral,
-  destination: string | google.maps.Place | google.maps.LatLngLiteral,
+  origin: google.maps.LatLngLiteral,
+  destination: google.maps.LatLngLiteral,
   mode: TravelModeKey,
-  extra?: Partial<google.maps.DirectionsRequest>,
 ): Promise<google.maps.DirectionsResult | null> =>
   new Promise((resolve) => {
     const svc = new google.maps.DirectionsService();
@@ -100,9 +151,8 @@ const requestRoute = (
       origin,
       destination,
       travelMode: travelModeOf(mode),
-      ...extra,
     };
-    if (mode === 'transit' && !request.transitOptions) {
+    if (mode === 'transit') {
       request.transitOptions = {
         departureTime: new Date(),
         modes: [
@@ -169,93 +219,42 @@ const parseResult = (
     summary: route.summary || MODE_LABEL[mode],
     steps,
     overviewPath: (route.overview_path ?? []).map(toLiteral),
-    result,
     mapsUrl: buildMapsUrl(from, to, mode),
   };
 };
 
+/** 모드당 1회. 실패해도 재시도하지 않음. 같은 키는 진행 중 Promise를 공유 */
 export const fetchJsRoute = async (
   from: Place,
   to: Place,
   mode: TravelModeKey,
 ): Promise<JsRouteDetail | null> => {
   const key = cacheKey(from, to, mode);
-  if (cache.has(key)) return cache.get(key) ?? null;
-  if (typeof google === 'undefined' || !google.maps?.DirectionsService) {
-    return null;
-  }
+  const cached = getCachedRoute(from, to, mode);
+  if (cached.found) return cached.value;
 
-  const extras: Partial<google.maps.DirectionsRequest>[] =
-    mode === 'transit'
-      ? [
-          {
-            transitOptions: {
-              departureTime: new Date(),
-              routingPreference:
-                google.maps.TransitRoutePreference.FEWER_TRANSFERS,
-            },
-          },
-          {
-            transitOptions: {
-              departureTime: new Date(),
-              routingPreference:
-                google.maps.TransitRoutePreference.LESS_WALKING,
-            },
-          },
-          {},
-        ]
-      : [{}];
+  const pending = inflight.get(key);
+  if (pending) return pending;
 
-  const pairs: Array<
-    [
-      string | google.maps.Place | google.maps.LatLngLiteral,
-      string | google.maps.Place | google.maps.LatLngLiteral,
-    ]
-  > = [];
-  if (from.googlePlaceId && to.googlePlaceId) {
-    pairs.push([
-      { placeId: from.googlePlaceId },
-      { placeId: to.googlePlaceId },
-    ]);
-  }
-  pairs.push([
-    { lat: from.lat, lng: from.lng },
-    { lat: to.lat, lng: to.lng },
-  ]);
-  const fromNamed = [from.name, from.address].filter(Boolean).join(', ');
-  const toNamed = [to.name, to.address].filter(Boolean).join(', ');
-  if (fromNamed && toNamed) {
-    pairs.push([fromNamed, toNamed]);
-  }
-
-  for (const extra of extras) {
-    for (const [origin, destination] of pairs) {
-      const raw = await requestRoute(origin, destination, mode, extra);
-      const parsed = raw ? parseResult(raw, mode, from, to) : null;
-      if (parsed) {
-        cache.set(key, parsed);
-        return parsed;
-      }
+  const run = (async (): Promise<JsRouteDetail | null> => {
+    if (typeof google === 'undefined' || !google.maps?.DirectionsService) {
+      return null;
     }
-  }
 
-  cache.set(key, null);
-  return null;
-};
+    const raw = await requestRoute(
+      { lat: from.lat, lng: from.lng },
+      { lat: to.lat, lng: to.lng },
+      mode,
+    );
+    const parsed = raw ? parseResult(raw, mode, from, to) : null;
+    remember(key, parsed);
+    return parsed;
+  })().finally(() => {
+    inflight.delete(key);
+  });
 
-export const fetchJsRoutes = async (
-  from: Place,
-  to: Place,
-): Promise<Partial<Record<TravelModeKey, JsRouteDetail | null>>> => {
-  const modes: TravelModeKey[] = ['walking', 'transit', 'driving'];
-  const results = await Promise.all(
-    modes.map((mode) => fetchJsRoute(from, to, mode)),
-  );
-  return {
-    walking: results[0],
-    transit: results[1],
-    driving: results[2],
-  };
+  inflight.set(key, run);
+  return run;
 };
 
 export const focusStepOnMap = (

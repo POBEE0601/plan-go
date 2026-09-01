@@ -1,3 +1,5 @@
+// 2026-09-01 Directions/Distance Matrix 과금 가드 (재시도·3모드 자동 호출 제거)
+// 콘솔 일일 쿼터: Google Cloud → API 및 서비스 → Directions API → 할당량
 // 2026-08-31 Google Distance Matrix로 이동수단 요약
 export interface TransitOption {
   mode: 'walking' | 'transit' | 'driving';
@@ -85,35 +87,21 @@ const fetchMode = async (
   };
 };
 
-const pickRecommended = (options: TransitOption[]): TransitOption | null => {
-  if (!options.length) return null;
-  const walking = options.find((o) => o.mode === 'walking');
-  // 1.2km 이하는 도보 추천
-  if (walking && walking.distanceMeters <= 1200) return walking;
-  const transit = options.find((o) => o.mode === 'transit');
-  if (transit) return transit;
-  return [...options].sort((a, b) => a.durationSec - b.durationSec)[0];
-};
-
+// 2026-09-01 Distance Matrix 3모드 병렬 호출 제거. 차량 1회만
 export const getTransitSummary = async (
   fromLat: number,
   fromLng: number,
   toLat: number,
   toLng: number,
 ): Promise<TransitSummary> => {
-  const modes = ['walking', 'transit', 'driving'] as const;
-
-  const options = (
-    await Promise.all(
-      modes.map((mode) => fetchMode(fromLat, fromLng, toLat, toLng, mode)),
-    )
-  ).filter((o): o is TransitOption => o != null);
+  const driving = await fetchMode(fromLat, fromLng, toLat, toLng, 'driving');
+  const options = driving ? [driving] : [];
 
   return {
     from: { lat: fromLat, lng: fromLng },
     to: { lat: toLat, lng: toLng },
     options,
-    recommended: pickRecommended(options),
+    recommended: driving,
   };
 };
 
@@ -313,80 +301,29 @@ const fetchDirectionsDetail = async (
     return { detail: null, failReason: 'API 키가 없습니다.' };
   }
 
-  // 2026-08-31 대중교통: 좌표 → 장소명 순으로 재시도 (일본 등은 API 데이터 공백 많음)
-  const region = inferRegion(fromLat, fromLng);
-  const regionSuffix =
-    region === 'jp' ? 'Japan' : region === 'kr' ? 'South Korea' : '';
-
-  const queryPairs: Array<[string | undefined, string | undefined]> = [
-    [undefined, undefined],
-  ];
-  if (mode === 'transit' && fromName?.trim() && toName?.trim()) {
-    queryPairs.push([fromName.trim(), toName.trim()]);
-    if (regionSuffix) {
-      queryPairs.push([
-        `${fromName.trim()}, ${regionSuffix}`,
-        `${toName.trim()}, ${regionSuffix}`,
-      ]);
-    }
+  // 2026-09-01 재시도 금지: 좌표 기준 1회만 호출
+  const data = await fetchDirectionsOnce(fromLat, fromLng, toLat, toLng, mode);
+  const detail = parseDirectionsResponse(data, mode);
+  if (detail) {
+    detail.mapsUrl = buildMapsUrl(
+      fromLat,
+      fromLng,
+      toLat,
+      toLng,
+      mode,
+      fromName,
+      toName,
+    );
+    return { detail };
   }
 
-  const attempts: Record<string, string>[] =
-    mode === 'transit'
-      ? [
-          {},
-          { transit_routing_preference: 'fewer_transfers' },
-          { transit_routing_preference: 'less_walking' },
-        ]
-      : [{}];
-
-  let lastStatus = '';
-  let lastError = '';
-
-  for (const [fromQuery, toQuery] of queryPairs) {
-    for (const extra of attempts) {
-      const data = await fetchDirectionsOnce(
-        fromLat,
-        fromLng,
-        toLat,
-        toLng,
-        mode,
-        extra,
-        fromQuery,
-        toQuery,
-      );
-      const detail = parseDirectionsResponse(data, mode);
-      if (detail) {
-        detail.mapsUrl = buildMapsUrl(
-          fromLat,
-          fromLng,
-          toLat,
-          toLng,
-          mode,
-          fromName,
-          toName,
-        );
-        return { detail };
-      }
-
-      lastStatus = data.status;
-      lastError = data.error_message ?? '';
-      console.warn(
-        `[directions] mode=${mode} status=${data.status}`,
-        data.error_message ?? '',
-        { extra, fromQuery, toQuery },
-      );
-    }
-  }
-
-  // ZERO_RESULTS는 결제 문제가 아님(일본 대중교통 API 미제공이 흔함)
   const failReason =
-    lastError ||
-    (lastStatus === 'ZERO_RESULTS'
-      ? 'Google Directions API가 이 구간의 대중교통 상세 노선을 제공하지 않습니다. (일본 등 일부 지역에서 흔함) Google 지도 앱에서는 확인 가능할 수 있습니다.'
-      : lastStatus === 'REQUEST_DENIED'
+    data.error_message ||
+    (data.status === 'ZERO_RESULTS'
+      ? 'Google Directions API가 이 구간의 상세 노선을 제공하지 않습니다. Google 지도 앱에서는 확인 가능할 수 있습니다.'
+      : data.status === 'REQUEST_DENIED'
         ? 'Directions API 권한/결제/키 설정을 확인하세요.'
-        : `Google 응답: ${lastStatus || 'UNKNOWN'}`);
+        : `Google 응답: ${data.status || 'UNKNOWN'}`);
 
   return { detail: null, failReason };
 };
@@ -398,15 +335,20 @@ export const getRouteDetails = async (
   toLng: number,
   fromName?: string,
   toName?: string,
+  onlyMode?: 'walking' | 'transit' | 'driving',
 ): Promise<{
   from: { lat: number; lng: number };
   to: { lat: number; lng: number };
   routes: RouteDetail[];
 }> => {
+  // 2026-09-01 기본은 요청한 1모드만. 3모드 병렬 호출 금지
   const modes = ['walking', 'transit', 'driving'] as const;
   const fetched = await Promise.all(
-    modes.map((mode) =>
-      fetchDirectionsDetail(
+    modes.map(async (mode) => {
+      if (onlyMode && mode !== onlyMode) {
+        return { detail: null, failReason: 'not-requested' as string | undefined };
+      }
+      return fetchDirectionsDetail(
         fromLat,
         fromLng,
         toLat,
@@ -414,8 +356,8 @@ export const getRouteDetails = async (
         mode,
         fromName,
         toName,
-      ),
-    ),
+      );
+    }),
   );
 
   const routes = modes.map((mode, i) => {

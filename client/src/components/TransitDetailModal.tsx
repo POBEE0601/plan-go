@@ -17,7 +17,8 @@ import {
 import { useGoogleMaps, mapsEmbedKey } from '../hooks/useGoogleMaps';
 import {
   buildMapsUrl,
-  fetchJsRoutes,
+  fetchJsRoute,
+  getCachedRoute,
   focusStepOnMap,
   type JsRouteDetail,
   type JsRouteStep,
@@ -103,9 +104,9 @@ export default function TransitDetailModal({
   const [routes, setRoutes] = useState<
     Partial<Record<TravelModeKey, JsRouteDetail | null>>
   >({});
-  const [loading, setLoading] = useState(false);
+  const [loadingMode, setLoadingMode] = useState<TravelModeKey | null>(null);
   const [activeMode, setActiveMode] = useState<TravelModeKey>(
-    initialMode ?? 'transit',
+    initialMode ?? 'driving',
   );
   const [activeStep, setActiveStep] = useState(0);
   const listRef = useRef<HTMLDivElement | null>(null);
@@ -113,33 +114,51 @@ export default function TransitDetailModal({
   const itemRefs = useRef<Record<number, HTMLLIElement | null>>({});
   const skipObserver = useRef(false);
 
+  // 2026-09-01 연 수단만 1회 조회. 나머지 모드는 탭 클릭 시
   useEffect(() => {
     if (!open || !isLoaded) return;
-    let cancelled = false;
-    setLoading(true);
-    setRoutes({});
-    setActiveMode(initialMode ?? 'transit');
+    const mode = initialMode ?? 'driving';
+    setActiveMode(mode);
     setActiveStep(0);
 
-    fetchJsRoutes(from, to)
+    const next: Partial<Record<TravelModeKey, JsRouteDetail | null>> = {};
+    (['walking', 'transit', 'driving'] as const).forEach((m) => {
+      const cached = getCachedRoute(from, to, m);
+      if (cached.found) next[m] = cached.value;
+    });
+    setRoutes(next);
+    setLoadingMode(null);
+
+    if (next[mode] !== undefined) return;
+
+    let cancelled = false;
+    setLoadingMode(mode);
+    fetchJsRoute(from, to, mode)
       .then((data) => {
-        if (cancelled) return;
-        setRoutes(data);
-        const preferred =
-          data[initialMode ?? 'transit'] ??
-          data.transit ??
-          data.driving ??
-          data.walking;
-        if (preferred) setActiveMode(preferred.mode);
+        if (!cancelled) {
+          setRoutes((prev) => ({ ...prev, [mode]: data }));
+        }
       })
       .finally(() => {
-        if (!cancelled) setLoading(false);
+        if (!cancelled) {
+          setLoadingMode((cur) => (cur === mode ? null : cur));
+        }
       });
 
     return () => {
       cancelled = true;
     };
-  }, [open, isLoaded, from.id, to.id, from.lat, to.lat, initialMode]);
+  }, [
+    open,
+    isLoaded,
+    from.id,
+    from.lat,
+    from.lng,
+    to.id,
+    to.lat,
+    to.lng,
+    initialMode,
+  ]);
 
   const activeRoute = routes[activeMode] ?? null;
   const steps = activeRoute?.steps ?? [];
@@ -198,6 +217,19 @@ export default function TransitDetailModal({
     return () => observer.disconnect();
   }, [steps, activeMode]);
 
+  const selectMode = (mode: TravelModeKey) => {
+    setActiveMode(mode);
+    if (routes[mode] !== undefined) return;
+    setLoadingMode(mode);
+    fetchJsRoute(from, to, mode)
+      .then((data) => {
+        setRoutes((prev) => ({ ...prev, [mode]: data }));
+      })
+      .finally(() => {
+        setLoadingMode((cur) => (cur === mode ? null : cur));
+      });
+  };
+
   const selectStep = (idx: number) => {
     skipObserver.current = true;
     setActiveStep(idx);
@@ -251,7 +283,7 @@ export default function TransitDetailModal({
               <button
                 key={mode}
                 type="button"
-                onClick={() => setActiveMode(mode)}
+                onClick={() => selectMode(mode)}
                 className={`flex flex-1 flex-col items-center rounded-xl border px-2 py-2 text-xs transition ${
                   activeMode === mode
                     ? 'border-primary-300 bg-primary-50 text-primary-800'
@@ -263,11 +295,13 @@ export default function TransitDetailModal({
                   {modeLabel(mode)}
                 </span>
                 <span className="text-[11px] text-slate-500">
-                  {loading
+                  {loadingMode === mode
                     ? '조회 중'
                     : route
                       ? route.durationText
-                      : '지도에서 확인'}
+                      : routes[mode] === null
+                        ? '지도에서 확인'
+                        : '보기'}
                 </span>
               </button>
             );
@@ -279,7 +313,7 @@ export default function TransitDetailModal({
             ref={listRef}
             className="min-h-0 flex-1 overflow-y-auto px-5 py-4 md:max-w-[380px] md:border-r md:border-slate-100"
           >
-            {loading || !isLoaded ? (
+            {loadingMode === activeMode || !isLoaded ? (
               <div className="flex flex-col items-center justify-center py-12 text-slate-400">
                 <Loader2 className="mb-2 h-7 w-7 animate-spin text-primary-500" />
                 <p className="text-sm">실제 경로를 불러오는 중...</p>

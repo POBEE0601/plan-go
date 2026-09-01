@@ -1,5 +1,4 @@
-// 2026-09-01 카드에 가장 가까운 의료시설 거리를 기본 표시
-// 2026-09-01 장소 카드: 응급실 이모지 + 의료시설 문구
+// 2026-09-01 병원 Nearby Search는 클릭 시에만 (카드 표시 시 자동 호출 제거)
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { ExternalLink, Loader2, Phone, X } from 'lucide-react';
@@ -8,6 +7,32 @@ import { telHref } from '../data/emergencyGuide';
 import type { NearbyHospital } from '../types/travel';
 
 const listCache = new Map<string, NearbyHospital[]>();
+const listInflight = new Map<string, Promise<NearbyHospital[]>>();
+
+const loadNearby = (
+  lat: number,
+  lng: number,
+  placeKey: string,
+): Promise<NearbyHospital[]> => {
+  const cached = listCache.get(placeKey);
+  if (cached) return Promise.resolve(cached);
+
+  const pending = listInflight.get(placeKey);
+  if (pending) return pending;
+
+  const req = placesApi
+    .nearbyHospitals(lat, lng, { limit: 5, phones: true })
+    .then((data) => {
+      listCache.set(placeKey, data);
+      return data;
+    })
+    .finally(() => {
+      listInflight.delete(placeKey);
+    });
+
+  listInflight.set(placeKey, req);
+  return req;
+};
 
 interface NearbyHospitalButtonProps {
   lat?: number;
@@ -24,8 +49,6 @@ export default function NearbyHospitalButton({
   const panelRef = useRef<HTMLDivElement>(null);
   const [hospitals, setHospitals] = useState<NearbyHospital[]>([]);
   const [loading, setLoading] = useState(false);
-  const [detailLoading, setDetailLoading] = useState(false);
-  const phonesFetched = useRef(false);
   const [error, setError] = useState('');
   const [open, setOpen] = useState(false);
   const [pos, setPos] = useState({ right: 12, bottom: 12 });
@@ -33,78 +56,20 @@ export default function NearbyHospitalButton({
   const hasCoords =
     lat != null && lng != null && !Number.isNaN(lat) && !Number.isNaN(lng);
 
-  const placeKey = hasCoords ? `${Number(lat).toFixed(4)},${Number(lng).toFixed(4)}` : '';
+  const placeKey = hasCoords
+    ? `${Number(lat).toFixed(4)},${Number(lng).toFixed(4)}`
+    : '';
 
-  // 카드가 보이면 가장 가까운 곳 거리만 먼저 조회 (전화번호 없음)
+  // 이전에 눌러 둔 캐시만 복원. 네트워크는 클릭 시에만
   useEffect(() => {
-    if (!hasCoords || !placeKey) {
+    if (!placeKey) {
       setHospitals([]);
       return;
     }
-
     const cached = listCache.get(placeKey);
-    if (cached?.length) {
-      setHospitals(cached);
-      setError('');
-      phonesFetched.current = cached.some((h) => Boolean(h.phone));
-      return;
-    }
-
-    phonesFetched.current = false;
-
-    let cancelled = false;
-    setLoading(true);
+    setHospitals(cached ?? []);
     setError('');
-
-    placesApi
-      .nearbyHospitals(lat, lng, { limit: 5 })
-      .then((data) => {
-        if (cancelled) return;
-        listCache.set(placeKey, data);
-        setHospitals(data);
-      })
-      .catch((err: unknown) => {
-        if (!cancelled) {
-          setError(
-            err instanceof Error ? err.message : '근처 병원 조회에 실패했습니다.',
-          );
-        }
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [hasCoords, lat, lng, placeKey]);
-
-  // 목록을 열 때만 연락처 조회
-  useEffect(() => {
-    if (!open || !hasCoords || !placeKey) return;
-    if (hospitals.length === 0 || phonesFetched.current) return;
-
-    phonesFetched.current = true;
-    let cancelled = false;
-    setDetailLoading(true);
-    placesApi
-      .nearbyHospitals(lat, lng, { limit: 5, phones: true })
-      .then((data) => {
-        if (cancelled) return;
-        listCache.set(placeKey, data);
-        setHospitals(data);
-      })
-      .catch(() => {
-        phonesFetched.current = false;
-      })
-      .finally(() => {
-        if (!cancelled) setDetailLoading(false);
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [open, hasCoords, lat, lng, placeKey, hospitals.length]);
+  }, [placeKey]);
 
   useEffect(() => {
     if (!open) return;
@@ -131,7 +96,32 @@ export default function NearbyHospitalButton({
         bottom: Math.max(8, window.innerHeight - rect.top + 8),
       });
     }
-    setOpen((v) => !v);
+
+    const next = !open;
+    setOpen(next);
+    if (!next || !placeKey) return;
+
+    const cached = listCache.get(placeKey);
+    if (cached) {
+      setHospitals(cached);
+      setError('');
+      return;
+    }
+
+    setLoading(true);
+    setError('');
+    loadNearby(lat, lng, placeKey)
+      .then((data) => {
+        setHospitals(data);
+      })
+      .catch((err: unknown) => {
+        setError(
+          err instanceof Error ? err.message : '근처 병원 조회에 실패했습니다.',
+        );
+      })
+      .finally(() => {
+        setLoading(false);
+      });
   };
 
   return (
@@ -142,11 +132,11 @@ export default function NearbyHospitalButton({
         onClick={toggle}
         className="absolute bottom-1.5 right-1.5 z-10 flex items-center gap-1 rounded-full bg-white/95 px-2 py-0.5 text-[11px] shadow-sm ring-1 ring-slate-200 hover:bg-rose-50"
         aria-label={`${placeName ?? '이 장소'} 근처 의료시설`}
-        title="근처 의료시설"
+        title="근처 의료시설 (클릭 시 조회)"
       >
         <span aria-hidden>🚑</span>
         <span className="font-medium text-slate-700">의료시설</span>
-        {loading && !nearest ? (
+        {open && loading && !nearest ? (
           <Loader2 className="h-3 w-3 animate-spin text-slate-400" />
         ) : nearest ? (
           <span className="font-semibold text-slate-500">
@@ -190,50 +180,46 @@ export default function NearbyHospitalButton({
                 </p>
               )}
               {hospitals.map((h) => (
-                  <div
-                    key={h.googlePlaceId}
-                    className="rounded-lg px-2 py-2 hover:bg-slate-50"
-                  >
-                    <div className="flex items-start justify-between gap-2">
-                      <p className="min-w-0 text-[13px] font-medium text-slate-800">
-                        {h.name}
-                      </p>
-                      <span className="shrink-0 text-[11px] font-bold text-rose-600">
-                        {h.distanceText}
-                      </span>
-                    </div>
-                    <p className="mt-0.5 text-[10px] text-slate-500">
-                      {h.facility}
-                      {h.departments[0] ? ` · ${h.departments[0]}` : ''}
+                <div
+                  key={h.googlePlaceId}
+                  className="rounded-lg px-2 py-2 hover:bg-slate-50"
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <p className="min-w-0 text-[13px] font-medium text-slate-800">
+                      {h.name}
                     </p>
-                    {detailLoading && !h.phone ? (
-                      <p className="mt-1 text-[11px] text-slate-400">
-                        연락처 확인 중…
-                      </p>
-                    ) : h.phone ? (
-                      <a
-                        href={telHref(h.phone)}
-                        className="mt-1 inline-flex items-center gap-1 text-[12px] font-semibold text-primary-700"
-                      >
-                        <Phone className="h-3 w-3" />
-                        {h.phone}
-                      </a>
-                    ) : (
-                      <p className="mt-1 text-[11px] text-slate-400">
-                        공개 연락처 없음
-                      </p>
-                    )}
-                    <a
-                      href={h.mapsUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="mt-0.5 inline-flex items-center gap-1 text-[11px] text-slate-500 hover:text-primary-700"
-                    >
-                      <ExternalLink className="h-3 w-3" />
-                      지도
-                    </a>
+                    <span className="shrink-0 text-[11px] font-bold text-rose-600">
+                      {h.distanceText}
+                    </span>
                   </div>
-                ))}
+                  <p className="mt-0.5 text-[10px] text-slate-500">
+                    {h.facility}
+                    {h.departments[0] ? ` · ${h.departments[0]}` : ''}
+                  </p>
+                  {h.phone ? (
+                    <a
+                      href={telHref(h.phone)}
+                      className="mt-1 inline-flex items-center gap-1 text-[12px] font-semibold text-primary-700"
+                    >
+                      <Phone className="h-3 w-3" />
+                      {h.phone}
+                    </a>
+                  ) : (
+                    <p className="mt-1 text-[11px] text-slate-400">
+                      공개 연락처 없음
+                    </p>
+                  )}
+                  <a
+                    href={h.mapsUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="mt-0.5 inline-flex items-center gap-1 text-[11px] text-slate-500 hover:text-primary-700"
+                  >
+                    <ExternalLink className="h-3 w-3" />
+                    지도
+                  </a>
+                </div>
+              ))}
             </div>
           </div>,
           document.body,

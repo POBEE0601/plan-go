@@ -1,3 +1,4 @@
+// 2026-09-01 차량 경로 1회만 조회 (TransitHint와 캐시·inflight 공유)
 // 2026-09-01 일차 타임라인 지도: 번호 핀 + 실제 도로 경로
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { GoogleMap, Marker, Polyline } from '@react-google-maps/api';

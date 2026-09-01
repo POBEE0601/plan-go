@@ -1,11 +1,14 @@
+// 2026-09-01 Places 라우트 분당 한도 적용 (검색·병원 남용 방지)
 // 2026-08-31 Google Places 검색·이동수단 API
 import { Router } from 'express';
 import { authMiddleware } from '../middleware/auth.js';
+import { rateLimit } from '../middleware/rateLimit.js';
 import { getRouteDetails, getTransitSummary } from '../services/googleDirections.js';
 import { getPlaceDetails, searchNearbyHospitals, searchPlaces } from '../services/googlePlaces.js';
 
 const router = Router();
 router.use(authMiddleware);
+router.use(rateLimit(40));
 
 router.get('/search', async (req, res) => {
   const query = String(req.query.q ?? '').trim();
@@ -102,6 +105,11 @@ router.get('/directions', async (req, res) => {
     typeof req.query.fromName === 'string' ? req.query.fromName : undefined;
   const toName =
     typeof req.query.toName === 'string' ? req.query.toName : undefined;
+  const modeRaw = String(req.query.mode ?? 'driving');
+  const onlyMode =
+    modeRaw === 'walking' || modeRaw === 'transit' || modeRaw === 'driving'
+      ? modeRaw
+      : 'driving';
 
   if ([fromLat, fromLng, toLat, toLng].some((n) => Number.isNaN(n))) {
     res
@@ -118,6 +126,7 @@ router.get('/directions', async (req, res) => {
       toLng,
       fromName,
       toName,
+      onlyMode,
     );
     res.json(details);
   } catch (err) {
