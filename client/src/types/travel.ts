@@ -62,6 +62,23 @@ export interface TravelPlan {
   myRole?: MemberRole;
 }
 
+// 2026-09-01 비상 팝업: 근처 병원
+export interface NearbyHospital {
+  googlePlaceId: string;
+  name: string;
+  address: string;
+  lat: number;
+  lng: number;
+  distanceMeters: number;
+  distanceText: string;
+  facility: string;
+  departments: string[];
+  rating?: number;
+  openNow?: boolean;
+  mapsUrl: string;
+  phone?: string;
+}
+
 export interface PlaceSearchResult {
   googlePlaceId: string;
   name: string;

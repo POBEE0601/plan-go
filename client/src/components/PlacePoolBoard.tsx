@@ -1,3 +1,5 @@
+// 2026-09-01 장소 풀 기본 접힘
+// 2026-09-01 장소 카드 우측 하단 가까운 병원
 // 2026-09-01 일차 카드 요약 정보 + 동선 지도
 // 2026-09-01 일자 아코디언·단일 작업영역·카테고리 이모지
 // 2026-09-01 모바일: 터치 드래그·삭제 버튼 노출
@@ -47,6 +49,7 @@ import { briefTypeLabels } from '../utils/placeBrief';
 import type { DayAssignment, Place, PlaceCategory } from '../types/travel';
 import TransitHint from './TransitHint';
 import DayTimelineMap from './DayTimelineMap';
+import NearbyHospitalButton from './NearbyHospitalButton';
 
 interface PlacePoolBoardProps {
   canWrite: boolean;
@@ -174,7 +177,7 @@ function SortableAssignment({
       id={`day-place-${assignment.id}`}
       ref={setNodeRef}
       style={style}
-      className={`group rounded-lg border bg-white p-2 shadow-sm ${
+      className={`group relative rounded-lg border bg-white p-2 pb-8 shadow-sm ${
         selected ? 'border-primary-400 ring-1 ring-primary-200' : 'border-slate-200'
       }`}
     >
@@ -222,6 +225,11 @@ function SortableAssignment({
             ))}
         </div>
       )}
+      <NearbyHospitalButton
+        lat={place.lat}
+        lng={place.lng}
+        placeName={place.name}
+      />
     </div>
   );
 }
@@ -414,7 +422,7 @@ export default function PlacePoolBoard({ canWrite }: PlacePoolBoardProps) {
   const { activeDay, setActiveDay } = usePlanUiStore();
 
   const [activeId, setActiveId] = useState<string | null>(null);
-  const [poolOpen, setPoolOpen] = useState(true);
+  const [poolOpen, setPoolOpen] = useState(false);
   const [poolFilter, setPoolFilter] = useState<PlaceCategory | 'all'>('all');
   const [isDesktop, setIsDesktop] = useState(
     () => window.matchMedia('(min-width: 1024px)').matches,

@@ -1,3 +1,4 @@
+// 2026-09-01 비상연락용 iso2 국가 코드
 // 2026-09-01 여행 좌표·지명으로 국가 통화 추정
 export interface CountryCurrency {
   countryKo: string;
@@ -5,6 +6,7 @@ export interface CountryCurrency {
   unitName: string;
   /** 표시 단위 (엔화 100엔, 동화 10,000동 등) */
   displayUnit: number;
+  iso2: string;
 }
 
 const KRW: CountryCurrency = {
@@ -12,6 +14,7 @@ const KRW: CountryCurrency = {
   code: 'KRW',
   unitName: '원',
   displayUnit: 1,
+  iso2: 'KR',
 };
 
 const JPY: CountryCurrency = {
@@ -19,90 +22,105 @@ const JPY: CountryCurrency = {
   code: 'JPY',
   unitName: '엔',
   displayUnit: 100,
+  iso2: 'JP',
 };
 const USD: CountryCurrency = {
   countryKo: '미국',
   code: 'USD',
   unitName: '달러',
   displayUnit: 1,
+  iso2: 'US',
 };
 const EUR: CountryCurrency = {
   countryKo: '유로존',
   code: 'EUR',
   unitName: '유로',
   displayUnit: 1,
+  iso2: 'EU',
 };
 const GBP: CountryCurrency = {
   countryKo: '영국',
   code: 'GBP',
   unitName: '파운드',
   displayUnit: 1,
+  iso2: 'GB',
 };
 const TWD: CountryCurrency = {
   countryKo: '대만',
   code: 'TWD',
   unitName: '대만달러',
   displayUnit: 1,
+  iso2: 'TW',
 };
 const HKD: CountryCurrency = {
   countryKo: '홍콩',
   code: 'HKD',
   unitName: '홍콩달러',
   displayUnit: 1,
+  iso2: 'HK',
 };
 const CNY: CountryCurrency = {
   countryKo: '중국',
   code: 'CNY',
   unitName: '위안',
   displayUnit: 1,
+  iso2: 'CN',
 };
 const THB: CountryCurrency = {
   countryKo: '태국',
   code: 'THB',
   unitName: '밧',
   displayUnit: 10,
+  iso2: 'TH',
 };
 const VND: CountryCurrency = {
   countryKo: '베트남',
   code: 'VND',
   unitName: '동',
   displayUnit: 10000,
+  iso2: 'VN',
 };
 const SGD: CountryCurrency = {
   countryKo: '싱가포르',
   code: 'SGD',
   unitName: '싱가포르달러',
   displayUnit: 1,
+  iso2: 'SG',
 };
 const AUD: CountryCurrency = {
   countryKo: '호주',
   code: 'AUD',
   unitName: '호주달러',
   displayUnit: 1,
+  iso2: 'AU',
 };
 const CAD: CountryCurrency = {
   countryKo: '캐나다',
   code: 'CAD',
   unitName: '캐나다달러',
   displayUnit: 1,
+  iso2: 'CA',
 };
 const PHP: CountryCurrency = {
   countryKo: '필리핀',
   code: 'PHP',
   unitName: '페소',
   displayUnit: 1,
+  iso2: 'PH',
 };
 const IDR: CountryCurrency = {
   countryKo: '인도네시아',
   code: 'IDR',
   unitName: '루피아',
   displayUnit: 10000,
+  iso2: 'ID',
 };
 const MYR: CountryCurrency = {
   countryKo: '말레이시아',
   code: 'MYR',
   unitName: '링깃',
   displayUnit: 1,
+  iso2: 'MY',
 };
 
 const NAME_HINTS: Array<[RegExp, CountryCurrency]> = [

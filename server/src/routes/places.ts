@@ -2,7 +2,7 @@
 import { Router } from 'express';
 import { authMiddleware } from '../middleware/auth.js';
 import { getRouteDetails, getTransitSummary } from '../services/googleDirections.js';
-import { getPlaceDetails, searchPlaces } from '../services/googlePlaces.js';
+import { getPlaceDetails, searchNearbyHospitals, searchPlaces } from '../services/googlePlaces.js';
 
 const router = Router();
 router.use(authMiddleware);
@@ -38,6 +38,32 @@ router.get('/details/:placeId', async (req, res) => {
   } catch (err) {
     const message =
       err instanceof Error ? err.message : '장소 상세 조회에 실패했습니다.';
+    res.status(502).json({ message });
+  }
+});
+
+// 2026-09-01 좌표 기준 근처 병원·의원
+router.get('/nearby-hospitals', async (req, res) => {
+  const lat = Number(req.query.lat);
+  const lng = Number(req.query.lng);
+
+  const limit = req.query.limit != null ? Number(req.query.limit) : 5;
+  const withPhones = req.query.phones === '1' || req.query.phones === 'true';
+
+  if (Number.isNaN(lat) || Number.isNaN(lng)) {
+    res.status(400).json({ message: 'lat, lng가 필요합니다.' });
+    return;
+  }
+
+  try {
+    const hospitals = await searchNearbyHospitals(lat, lng, {
+      limit: Number.isNaN(limit) ? 5 : limit,
+      withPhones,
+    });
+    res.json(hospitals);
+  } catch (err) {
+    const message =
+      err instanceof Error ? err.message : '근처 병원 조회에 실패했습니다.';
     res.status(502).json({ message });
   }
 });

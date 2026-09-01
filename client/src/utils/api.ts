@@ -11,6 +11,7 @@ import type {
   InvitePreview,
   Place,
   PlaceSearchResult,
+  NearbyHospital,
   PlanMember,
   RouteDetailsResponse,
   TransitSummary,
@@ -124,6 +125,20 @@ export const placesApi = {
     if (lat != null) params.set('lat', String(lat));
     if (lng != null) params.set('lng', String(lng));
     return request<PlaceSearchResult[]>(`/places/search?${params}`);
+  },
+
+  nearbyHospitals: (
+    lat: number,
+    lng: number,
+    options?: { limit?: number; phones?: boolean },
+  ) => {
+    const params = new URLSearchParams({
+      lat: String(lat),
+      lng: String(lng),
+      limit: String(options?.limit ?? 5),
+    });
+    if (options?.phones) params.set('phones', '1');
+    return request<NearbyHospital[]>(`/places/nearby-hospitals?${params}`);
   },
 
   transit: (fromLat: number, fromLng: number, toLat: number, toLng: number) => {

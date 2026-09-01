@@ -1,3 +1,4 @@
+// 2026-09-01 도시별 비상 연락망 버튼
 // 2026-09-01 PC 메뉴 접기 + 일자 아코디언
 // 2026-09-01 모바일: 드로어로 전환, 계획 선택 시 자동 닫힘
 // 2026-08-31 여행 계획 생성 시 지역 선택 지원
@@ -10,15 +11,17 @@ import {
   PanelLeftOpen,
   Plus,
   Search,
+  ShieldAlert,
   Trash2,
   X,
 } from 'lucide-react';
 import DayAccordion from './DayAccordion';
+import EmergencyModal from './EmergencyModal';
 import { useTravelStore } from '../store/useTravelStore';
 import { usePlanUiStore } from '../store/usePlanUiStore';
 import { placesApi } from '../utils/api';
 import { getDayCount } from '../utils/days';
-import type { PlaceSearchResult } from '../types/travel';
+import type { PlaceSearchResult, TravelPlan } from '../types/travel';
 
 interface SidePanelProps {
   open?: boolean;
@@ -48,6 +51,7 @@ export default function SidePanel({ open = true, onClose }: SidePanelProps) {
     useState<PlaceSearchResult | null>(null);
   const [searchingRegion, setSearchingRegion] = useState(false);
   const [regionError, setRegionError] = useState('');
+  const [emergencyPlan, setEmergencyPlan] = useState<TravelPlan | null>(null);
 
   // 지역명 입력 후 짧은 디바운스로 자동 검색
   useEffect(() => {
@@ -339,20 +343,22 @@ export default function SidePanel({ open = true, onClose }: SidePanelProps) {
         ) : (
           travelPlans.map((plan) => (
             <li key={plan.id}>
-              <button
-                type="button"
-                onClick={() => {
-                  void selectPlan(plan.id);
-                  setActiveDay(1);
-                  onClose?.();
-                }}
-                className={`group mb-1 flex w-full items-start justify-between rounded-lg px-3 py-2.5 text-left transition ${
+              <div
+                className={`group mb-1 flex w-full items-start rounded-lg px-2 py-2.5 transition ${
                   selectedPlanId === plan.id
                     ? 'bg-primary-50 text-primary-800 ring-1 ring-primary-200'
                     : 'text-slate-700 hover:bg-slate-50'
                 }`}
               >
-                <div className="min-w-0 flex-1">
+                <button
+                  type="button"
+                  onClick={() => {
+                    void selectPlan(plan.id);
+                    setActiveDay(1);
+                    onClose?.();
+                  }}
+                  className="min-w-0 flex-1 px-1 text-left"
+                >
                   <p className="truncate text-sm font-medium">{plan.title}</p>
                   {plan.regionName && (
                     <p className="mt-0.5 flex items-center gap-1 text-xs text-primary-600">
@@ -368,16 +374,25 @@ export default function SidePanel({ open = true, onClose }: SidePanelProps) {
                     장소 {(plan.places ?? []).length}개 · 배정{' '}
                     {(plan.dayAssignments ?? []).length}개
                   </p>
-                </div>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setEmergencyPlan(plan)}
+                  className="ml-0.5 shrink-0 rounded-lg p-2 text-rose-500 hover:bg-rose-50"
+                  aria-label={`${plan.regionName || plan.title} 비상 안내`}
+                  title="비상 연락망"
+                >
+                  <ShieldAlert className="h-4 w-4" />
+                </button>
                 <button
                   type="button"
                   onClick={(e) => handleDelete(e, plan.id)}
-                  className="ml-1 shrink-0 rounded p-2 text-slate-400 transition hover:bg-red-50 hover:text-red-500 md:opacity-0 md:group-hover:opacity-100"
+                  className="shrink-0 rounded p-2 text-slate-400 transition hover:bg-red-50 hover:text-red-500 md:opacity-0 md:group-hover:opacity-100"
                   aria-label="여행 계획 삭제"
                 >
                   <Trash2 className="h-3.5 w-3.5" />
                 </button>
-              </button>
+              </div>
             </li>
           ))
         )}
@@ -392,6 +407,16 @@ export default function SidePanel({ open = true, onClose }: SidePanelProps) {
         </div>
       </div>
     </aside>
+    <EmergencyModal
+      open={emergencyPlan != null}
+      onClose={() => setEmergencyPlan(null)}
+      regionName={emergencyPlan?.regionName || emergencyPlan?.title}
+      lat={emergencyPlan?.regionLat ?? emergencyPlan?.places?.[0]?.lat}
+      lng={emergencyPlan?.regionLng ?? emergencyPlan?.places?.[0]?.lng}
+      placeName={[emergencyPlan?.regionName, emergencyPlan?.title]
+        .filter(Boolean)
+        .join(' ')}
+    />
     </>
   );
 }
