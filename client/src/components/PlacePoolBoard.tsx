@@ -1,3 +1,4 @@
+// 2026-09-01 일차 카드 요약 정보 + 동선 지도
 // 2026-09-01 일자 아코디언·단일 작업영역·카테고리 이모지
 // 2026-09-01 모바일: 터치 드래그·삭제 버튼 노출
 // 2026-08-31 장소 풀 + Day 보드 (드래그·버튼)
@@ -24,6 +25,7 @@ import {
   CalendarDays,
   ChevronDown,
   ChevronUp,
+  Clock,
   GripVertical,
   MapPin,
   Plus,
@@ -41,8 +43,10 @@ import {
   getDateForDay,
   getDayCount,
 } from '../utils/days';
+import { briefTypeLabels } from '../utils/placeBrief';
 import type { DayAssignment, Place, PlaceCategory } from '../types/travel';
 import TransitHint from './TransitHint';
+import DayTimelineMap from './DayTimelineMap';
 
 interface PlacePoolBoardProps {
   canWrite: boolean;
@@ -51,31 +55,65 @@ interface PlacePoolBoardProps {
 function PlaceCardContent({
   place,
   compact,
+  pin,
+  assignment,
 }: {
   place: Place;
   compact?: boolean;
+  pin?: number;
+  assignment?: DayAssignment;
 }) {
+  const isDayCard = pin != null;
+  const typeLabels = isDayCard ? briefTypeLabels(place.types) : [];
+  const memo = assignment?.memo || place.memo;
+
   return (
     <div className="flex min-w-0 flex-1 items-start gap-2">
-      <span
-        className={`shrink-0 leading-none ${compact ? 'text-lg' : 'text-2xl'}`}
-        title={categoryLabel(place.category)}
-      >
-        {categoryEmoji(place.category)}
-      </span>
+      {pin != null ? (
+        <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary-600 text-[11px] font-bold text-white">
+          {pin}
+        </span>
+      ) : (
+        <span
+          className={`shrink-0 leading-none ${compact ? 'text-lg' : 'text-2xl'}`}
+          title={categoryLabel(place.category)}
+        >
+          {categoryEmoji(place.category)}
+        </span>
+      )}
+      {!compact && isDayCard && place.photoUrl && (
+        <img
+          src={place.photoUrl}
+          alt=""
+          className="h-14 w-14 shrink-0 rounded-lg object-cover"
+          onError={(e) => {
+            e.currentTarget.style.display = 'none';
+          }}
+        />
+      )}
       <div className="min-w-0 flex-1">
         <p
           className={`truncate font-medium text-slate-800 ${compact ? 'text-sm' : ''}`}
         >
           {place.name}
         </p>
-        {!compact && (
-          <p className="truncate text-xs text-slate-400">{place.address}</p>
+        {!compact && place.address && (
+          <p className="mt-0.5 line-clamp-2 text-[11px] leading-snug text-slate-500">
+            {place.address}
+          </p>
         )}
         <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[10px] text-slate-500">
           <span className="rounded bg-slate-100 px-1.5 py-0.5">
             {categoryBadge(place.category)}
           </span>
+          {typeLabels.map((label) => (
+            <span
+              key={label}
+              className="rounded bg-slate-50 px-1.5 py-0.5 text-slate-500"
+            >
+              {label}
+            </span>
+          ))}
           {place.rating != null && (
             <span className="flex items-center gap-0.5">
               <Star className="h-2.5 w-2.5 fill-amber-400 text-amber-400" />
@@ -83,6 +121,15 @@ function PlaceCardContent({
             </span>
           )}
         </div>
+        {!compact && isDayCard && assignment?.time && (
+          <p className="mt-1 flex items-center gap-1 text-[11px] text-slate-500">
+            <Clock className="h-3 w-3" />
+            {assignment.time}
+          </p>
+        )}
+        {!compact && isDayCard && memo && (
+          <p className="mt-1 line-clamp-2 text-[11px] text-slate-500">{memo}</p>
+        )}
       </div>
     </div>
   );
@@ -91,17 +138,23 @@ function PlaceCardContent({
 function SortableAssignment({
   assignment,
   place,
+  pin,
   canWrite,
   dayCount,
+  selected,
   onRemove,
   onMove,
+  onFocus,
 }: {
   assignment: DayAssignment;
   place: Place;
+  pin: number;
   canWrite: boolean;
   dayCount: number;
+  selected: boolean;
   onRemove: () => void;
   onMove: (day: number) => void;
+  onFocus: () => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({
@@ -118,9 +171,12 @@ function SortableAssignment({
 
   return (
     <div
+      id={`day-place-${assignment.id}`}
       ref={setNodeRef}
       style={style}
-      className="group rounded-lg border border-slate-200 bg-white p-2 shadow-sm"
+      className={`group rounded-lg border bg-white p-2 shadow-sm ${
+        selected ? 'border-primary-400 ring-1 ring-primary-200' : 'border-slate-200'
+      }`}
     >
       <div className="flex items-start gap-1">
         {canWrite && (
@@ -133,7 +189,13 @@ function SortableAssignment({
             <GripVertical className="h-4 w-4" />
           </button>
         )}
-        <PlaceCardContent place={place} compact />
+        <button type="button" onClick={onFocus} className="min-w-0 flex-1 text-left">
+          <PlaceCardContent
+            place={place}
+            pin={pin}
+            assignment={assignment}
+          />
+        </button>
         {canWrite && (
           <button
             type="button"
@@ -257,53 +319,81 @@ function DayWorkPanel({
   });
   const { removeFromDay, moveAssignment } = useTravelStore();
   const ids = assignments.map((a) => a.id);
+  const [focusPlaceId, setFocusPlaceId] = useState<string | null>(null);
+
+  const orderedPlaces = assignments
+    .map((a) => placesById[a.placeId])
+    .filter((p): p is Place => Boolean(p));
+
+  const focusAssignment = (placeId: string, assignmentId: string) => {
+    setFocusPlaceId(placeId);
+    document
+      .getElementById(`day-place-${assignmentId}`)
+      ?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  };
 
   return (
     <div
       ref={setNodeRef}
-      className={`flex min-h-0 flex-1 flex-col rounded-xl border ${
+      className={`flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border lg:flex-row ${
         isOver
           ? 'border-primary-400 bg-primary-50/50'
           : 'border-slate-200 bg-slate-50'
       }`}
     >
       <SortableContext items={ids} strategy={verticalListSortingStrategy}>
-        <div className="flex flex-1 flex-col gap-2 overflow-y-auto p-3">
-          {assignments.length === 0 && (
-            <p className="py-10 text-center text-sm text-slate-400">
-              {canWrite
-                ? '장소 풀에서 드래그하거나 추가 버튼으로 이 날에 담으세요'
-                : '아직 배정된 장소가 없습니다'}
-            </p>
-          )}
-          {assignments.map((a, index) => {
-            const place = placesById[a.placeId];
-            if (!place) return null;
-            const prev =
-              index > 0 ? placesById[assignments[index - 1].placeId] : null;
-            return (
-              <Fragment key={a.id}>
-                {prev && (
-                  <TransitHint
-                    key={`transit-${prev.id}-${place.id}-${index}`}
-                    from={prev}
-                    to={place}
-                    segmentKey={`${prev.id}->${place.id}@${index}`}
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col order-2 lg:order-1">
+          <div className="flex flex-1 flex-col gap-2 overflow-y-auto p-3">
+            {assignments.length === 0 && (
+              <p className="py-10 text-center text-sm text-slate-400">
+                {canWrite
+                  ? '장소 풀에서 드래그하거나 추가 버튼으로 이 날에 담으세요'
+                  : '아직 배정된 장소가 없습니다'}
+              </p>
+            )}
+            {assignments.map((a, index) => {
+              const place = placesById[a.placeId];
+              if (!place) return null;
+              const prev =
+                index > 0 ? placesById[assignments[index - 1].placeId] : null;
+              return (
+                <Fragment key={a.id}>
+                  {prev && (
+                    <TransitHint
+                      key={`transit-${prev.id}-${place.id}-${index}`}
+                      from={prev}
+                      to={place}
+                      segmentKey={`${prev.id}->${place.id}@${index}`}
+                    />
+                  )}
+                  <SortableAssignment
+                    assignment={a}
+                    place={place}
+                    pin={index + 1}
+                    canWrite={canWrite}
+                    dayCount={dayCount}
+                    selected={focusPlaceId === place.id}
+                    onRemove={() => removeFromDay(a.id)}
+                    onMove={(day) => moveAssignment(a.id, day)}
+                    onFocus={() => setFocusPlaceId(place.id)}
                   />
-                )}
-                <SortableAssignment
-                  assignment={a}
-                  place={place}
-                  canWrite={canWrite}
-                  dayCount={dayCount}
-                  onRemove={() => removeFromDay(a.id)}
-                  onMove={(day) => moveAssignment(a.id, day)}
-                />
-              </Fragment>
-            );
-          })}
+                </Fragment>
+              );
+            })}
+          </div>
         </div>
       </SortableContext>
+      <div className="order-1 h-52 shrink-0 overflow-hidden border-b border-slate-200 lg:order-2 lg:h-auto lg:w-[min(42%,380px)] lg:border-b-0 lg:border-l">
+        <DayTimelineMap
+          places={orderedPlaces}
+          focusPlaceId={focusPlaceId}
+          onSelectPlace={(placeId) => {
+            const assignment = assignments.find((a) => a.placeId === placeId);
+            if (assignment) focusAssignment(placeId, assignment.id);
+            else setFocusPlaceId(placeId);
+          }}
+        />
+      </div>
       <p className="sr-only">
         {dayIndex}일차 {date}
       </p>
@@ -620,7 +710,7 @@ export default function PlacePoolBoard({ canWrite }: PlacePoolBoardProps) {
                   </button>
                   {open && (
                     <div className="border-t border-slate-100 px-2 pb-2 pt-1">
-                      <div className="flex max-h-[45vh] min-h-[12rem] flex-col">
+                      <div className="flex max-h-[70vh] min-h-[16rem] flex-col">
                         <DayWorkPanel
                           dayIndex={day}
                           date={getDateForDay(selectedPlan.startDate, day)}

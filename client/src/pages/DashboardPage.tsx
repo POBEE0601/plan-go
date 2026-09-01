@@ -1,3 +1,4 @@
+// 2026-09-01 대시보드: 여행지 환율 표시
 // 2026-09-01 일자 아코디언·단일 작업영역
 // 2026-09-01 대시보드: 모바일 여행 목록 드로어 + 지도 오버레이
 import { useEffect, useState } from 'react';
@@ -16,6 +17,7 @@ import PlacePoolBoard from '../components/PlacePoolBoard';
 import InviteModal from '../components/InviteModal';
 import { useTravelStore } from '../store/useTravelStore';
 import { usePlanUiStore } from '../store/usePlanUiStore';
+import ExchangeRateBadge from '../components/ExchangeRateBadge';
 
 export default function DashboardPage() {
   const {
@@ -110,15 +112,27 @@ export default function DashboardPage() {
                   <h2 className="truncate text-base font-bold text-slate-800 sm:text-lg">
                     {selectedPlan.title}
                   </h2>
-                  <p className="truncate text-xs text-slate-500 sm:text-sm">
+                  <p className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-slate-500 sm:text-sm">
                     {selectedPlan.regionName && (
-                      <span className="mr-2 text-primary-600">
+                      <span className="text-primary-600">
                         {selectedPlan.regionName}
                       </span>
                     )}
-                    {selectedPlan.startDate} ~ {selectedPlan.endDate}
+                    <span>
+                      {selectedPlan.startDate} ~ {selectedPlan.endDate}
+                    </span>
+                    <ExchangeRateBadge
+                      lat={selectedPlan.regionLat}
+                      lng={selectedPlan.regionLng}
+                      placeName={[
+                        selectedPlan.regionName,
+                        selectedPlan.title,
+                      ]
+                        .filter(Boolean)
+                        .join(' ')}
+                    />
                     {!canWrite && (
-                      <span className="ml-2 rounded bg-slate-100 px-2 py-0.5 text-xs">
+                      <span className="rounded bg-slate-100 px-2 py-0.5 text-xs">
                         읽기 전용
                       </span>
                     )}

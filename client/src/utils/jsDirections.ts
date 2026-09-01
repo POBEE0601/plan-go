@@ -76,17 +76,16 @@ export const buildMapsUrl = (
   to: Place,
   mode: TravelModeKey,
 ): string => {
-  const origin = encodeURIComponent(
-    from.googlePlaceId
-      ? `place_id:${from.googlePlaceId}`
-      : from.name || `${from.lat},${from.lng}`,
-  );
-  const destination = encodeURIComponent(
-    to.googlePlaceId
-      ? `place_id:${to.googlePlaceId}`
-      : to.name || `${to.lat},${to.lng}`,
-  );
-  return `https://www.google.com/maps/dir/?api=1&origin=${origin}&destination=${destination}&travelmode=${mode}`;
+  // 2026-09-01 origin=place_id: 는 Maps가 lace_id로 깨뜨림 → 이름 + origin_place_id 사용
+  const params = new URLSearchParams({
+    api: '1',
+    origin: from.name?.trim() || `${from.lat},${from.lng}`,
+    destination: to.name?.trim() || `${to.lat},${to.lng}`,
+    travelmode: mode,
+  });
+  if (from.googlePlaceId) params.set('origin_place_id', from.googlePlaceId);
+  if (to.googlePlaceId) params.set('destination_place_id', to.googlePlaceId);
+  return `https://www.google.com/maps/dir/?${params.toString()}`;
 };
 
 const requestRoute = (

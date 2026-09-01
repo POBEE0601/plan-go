@@ -10,6 +10,7 @@ import {
   Footprints,
   Loader2,
   MapPin,
+  Navigation,
   TrainFront,
   X,
 } from 'lucide-react';
@@ -42,6 +43,31 @@ const modeIcon = (mode: string, className = 'h-4 w-4') => {
 
 const modeLabel = (mode: TravelModeKey) =>
   mode === 'walking' ? '도보' : mode === 'transit' ? '대중교통' : '차량';
+
+const navLabel = (mode: TravelModeKey) =>
+  mode === 'driving'
+    ? '구글 지도에서 내비 안내'
+    : mode === 'transit'
+      ? '구글 지도에서 대중교통 길찾기 열기'
+      : '구글 지도에서 도보 길찾기 열기';
+
+function MapsNavButton({ href, mode }: { href: string; mode: TravelModeKey }) {
+  return (
+    <a
+      href={href}
+      target="_blank"
+      rel="noreferrer"
+      className="mt-3 inline-flex items-center gap-1.5 rounded-lg bg-primary-600 px-3 py-2 text-xs font-semibold text-white hover:bg-primary-700"
+    >
+      {mode === 'driving' ? (
+        <Navigation className="h-3.5 w-3.5" />
+      ) : (
+        <ExternalLink className="h-3.5 w-3.5" />
+      )}
+      {navLabel(mode)}
+    </a>
+  );
+}
 
 const embedDirectionsUrl = (
   from: Place,
@@ -120,7 +146,7 @@ export default function TransitDetailModal({
   const embedUrl = !activeRoute
     ? embedDirectionsUrl(from, to, activeMode)
     : null;
-  const mapsUrl = activeRoute?.mapsUrl ?? buildMapsUrl(from, to, activeMode);
+  const mapsUrl = buildMapsUrl(from, to, activeMode);
 
   const mapCenter = useMemo(
     () => ({
@@ -272,6 +298,9 @@ export default function TransitDetailModal({
                     {activeRoute.distanceText}
                     {activeRoute.summary ? ` · ${activeRoute.summary}` : ''}
                   </p>
+                  {(activeMode === 'driving' || activeMode === 'transit') && (
+                    <MapsNavButton href={mapsUrl} mode={activeMode} />
+                  )}
                 </div>
                 <ol className="space-y-3">
                   {steps.map((step, idx) => (
@@ -298,15 +327,7 @@ export default function TransitDetailModal({
                   오른쪽 지도는 Google 지도 길찾기 결과입니다. 목록을 보려면
                   아래 링크로 지도를 여세요.
                 </p>
-                <a
-                  href={mapsUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="mt-3 inline-flex items-center gap-1 rounded-md bg-white px-2.5 py-1.5 text-[11px] font-medium text-primary-700 ring-1 ring-primary-200 hover:bg-primary-50"
-                >
-                  <ExternalLink className="h-3 w-3" />
-                  Google 지도에서 {modeLabel(activeMode)} 길찾기 열기
-                </a>
+                <MapsNavButton href={mapsUrl} mode={activeMode} />
               </div>
             )}
           </div>
