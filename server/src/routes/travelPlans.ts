@@ -1,3 +1,4 @@
+// 2026-09-04 초대 멤버 일정 나가기 API
 // 2026-08-31 여행 계획·장소·Day·초대 API
 import { Router } from 'express';
 import {
@@ -13,6 +14,7 @@ import {
   getAccessiblePlans,
   getMemberRole,
   inviteByEmail,
+  leavePlan,
   removeAssignment,
   removeMember,
   reorderDay,
@@ -340,6 +342,22 @@ router.delete('/:planId/members/:memberId', async (req: AuthRequest, res) => {
   );
   if (!ok) {
     res.status(403).json({ message: '멤버 제거에 실패했습니다.' });
+    return;
+  }
+  res.status(204).send();
+});
+
+// 2026-09-04 초대받은 사람이 일정에서 나가기
+router.post('/:planId/leave', async (req: AuthRequest, res) => {
+  const result = await leavePlan(param(req.params.planId), req.userId!);
+  if (result === 'owner') {
+    res.status(400).json({
+      message: '소유자는 나갈 수 없습니다. 계획을 삭제해 주세요.',
+    });
+    return;
+  }
+  if (result !== 'ok') {
+    res.status(403).json({ message: '이 여행에서 나갈 수 없습니다.' });
     return;
   }
   res.status(204).send();

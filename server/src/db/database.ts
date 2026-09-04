@@ -1066,6 +1066,23 @@ export const removeMember = async (
   return true;
 };
 
+// 2026-09-04 초대 멤버가 스스로 일정에서 나감 (계획 삭제는 아님)
+export const leavePlan = async (
+  planId: string,
+  userId: string,
+): Promise<'ok' | 'owner' | 'forbidden'> => {
+  const plan = await loadPlan(planId);
+  if (!plan || !canRead(plan, userId)) return 'forbidden';
+  if (canManage(plan, userId)) return 'owner';
+
+  const { rowCount } = await pool.query(
+    `DELETE FROM plan_members
+     WHERE plan_id = $1 AND user_id = $2 AND role <> 'owner'`,
+    [planId, userId],
+  );
+  return (rowCount ?? 0) > 0 ? 'ok' : 'forbidden';
+};
+
 // --- 2026-08-31 고객게시판 ---
 
 export const maskAuthorName = (name: string): string => {

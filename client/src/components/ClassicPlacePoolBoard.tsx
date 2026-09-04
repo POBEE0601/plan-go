@@ -1,3 +1,4 @@
+// 2026-09-04 장기간 여행: 전 일차 버튼 그리드 → 어제/내일+드롭다운
 // 2026-09-01 장소 풀 기본 접힘
 // 2026-09-01 장소 카드 우측 하단 가까운 병원
 // 2026-09-01 일차 카드 요약 정보 + 동선 지도
@@ -52,6 +53,7 @@ import type { DayAssignment, Place, PlaceCategory } from '../types/travel';
 import TransitHint from './TransitHint';
 import DayTimelineMap from './DayTimelineMap';
 import NearbyHospitalButton from './NearbyHospitalButton';
+import DayMoveControl from './DayMoveControl';
 
 interface PlacePoolBoardProps {
   canWrite: boolean;
@@ -212,19 +214,12 @@ function SortableAssignment({
         )}
       </div>
       {canWrite && dayCount > 1 && (
-        <div className="mt-1.5 flex flex-wrap gap-1 pl-5">
-          {Array.from({ length: dayCount }, (_, i) => i + 1)
-            .filter((d) => d !== assignment.dayIndex)
-            .map((d) => (
-              <button
-                key={d}
-                type="button"
-                onClick={() => onMove(d)}
-                className="min-h-8 rounded bg-slate-50 px-2 py-1 text-[10px] text-slate-500 hover:bg-primary-50 hover:text-primary-700"
-              >
-                → {d}일차
-              </button>
-            ))}
+        <div className="mt-1.5 pl-5">
+          <DayMoveControl
+            currentDay={assignment.dayIndex}
+            dayCount={dayCount}
+            onMove={onMove}
+          />
         </div>
       )}
       <NearbyHospitalButton

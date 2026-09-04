@@ -331,6 +331,10 @@ export const travelApi = {
   deletePlan: (id: string) =>
     request<void>(`/travel-plans/${id}`, { method: 'DELETE' }),
 
+  // 2026-09-04 초대 멤버가 일정에서 나감
+  leavePlan: (id: string) =>
+    request<void>(`/travel-plans/${id}/leave`, { method: 'POST' }),
+
   addPlace: (
     planId: string,
     data: Omit<Place, 'id' | 'planId'> & { googlePlaceId?: string },

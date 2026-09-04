@@ -1,6 +1,8 @@
+// 2026-09-04 일차 이동을 DayMoveControl로 통일
 // 2026-09-03 선택 장소 상세 인스펙터 (목록 카드에서 이관)
 import { Clock, MapPin, Star, X } from 'lucide-react';
 import NearbyHospitalButton from './NearbyHospitalButton';
+import DayMoveControl from './DayMoveControl';
 import { useTravelStore } from '../store/useTravelStore';
 import { usePlanUiStore } from '../store/usePlanUiStore';
 import { briefTypeLabels } from '../utils/placeBrief';
@@ -109,24 +111,17 @@ export default function PlaceInspector({
 
       <div className="flex flex-wrap items-center gap-2 border-t border-slate-100 px-3 py-2">
         {canWrite && dayCount > 1 && (
-          <label className="flex items-center gap-1.5 text-[11px] text-slate-500">
-            이동
-            <select
-              value={assignment.dayIndex}
-              onChange={(e) => {
-                const day = Number(e.target.value);
+          <div className="min-w-0 flex-1">
+            <DayMoveControl
+              currentDay={assignment.dayIndex}
+              dayCount={dayCount}
+              size="md"
+              onMove={(day) => {
                 void moveAssignment(assignment.id, day);
                 setActiveDay(day, { keepSelection: true });
               }}
-              className="rounded-md border border-slate-200 bg-white px-2 py-1 text-[12px] font-medium text-slate-700"
-            >
-              {Array.from({ length: dayCount }, (_, i) => i + 1).map((d) => (
-                <option key={d} value={d}>
-                  {d}일차
-                </option>
-              ))}
-            </select>
-          </label>
+            />
+          </div>
         )}
         {canWrite && (
           <button

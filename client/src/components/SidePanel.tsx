@@ -1,3 +1,5 @@
+// 2026-09-04 초대 멤버 휴지통은 나가기, 삭제는 방장만
+// 2026-09-04 장기간 여행: 접힌 레일 일차 압축
 // 2026-09-01 도시별 비상 연락망 버튼
 // 2026-09-01 PC 메뉴 접기 + 일자 아코디언
 // 2026-09-01 모바일: 드로어로 전환, 계획 선택 시 자동 닫힘
@@ -8,6 +10,8 @@
 import { useEffect, useState } from 'react';
 import {
   Calendar,
+  ChevronDown,
+  ChevronUp,
   Loader2,
   MapPin,
   PanelLeftClose,
@@ -21,10 +25,29 @@ import {
 import EmergencyModal from './EmergencyModal';
 import DayAccordion from './DayAccordion';
 import { useTravelStore } from '../store/useTravelStore';
+import { useAuthStore } from '../store/useAuthStore';
 import { usePlanUiStore } from '../store/usePlanUiStore';
 import { placesApi } from '../utils/api';
-import { getDayCount } from '../utils/days';
+import { dayOptionLabel, getDayCount, isLongTrip } from '../utils/days';
 import type { CitySearchResult, TravelPlan } from '../types/travel';
+
+const isPlanOwner = (plan: TravelPlan, userId?: string): boolean => {
+  if (!userId) return false;
+  if (plan.userId === userId) return true;
+  return (plan.members ?? []).some(
+    (m) =>
+      m.userId === userId && m.role === 'owner' && m.status === 'accepted',
+  );
+};
+
+const ownsListedPlan = (
+  plan: TravelPlan,
+  userId: string | undefined,
+  selectedPlanId: string | null,
+  myRole: string | null,
+): boolean =>
+  (selectedPlanId === plan.id && myRole === 'owner') ||
+  isPlanOwner(plan, userId);
 
 interface SidePanelProps {
   open?: boolean;
@@ -39,7 +62,10 @@ export default function SidePanel({ open = true, onClose }: SidePanelProps) {
     selectPlan,
     addTravelPlan,
     deleteTravelPlan,
+    leaveTravelPlan,
+    myRole,
   } = useTravelStore();
+  const userId = useAuthStore((s) => s.user?.id);
   const { activeDay, setActiveDay, sidebarCollapsed, toggleSidebar, layoutMode } =
     usePlanUiStore();
 
@@ -123,12 +149,38 @@ export default function SidePanel({ open = true, onClose }: SidePanelProps) {
     }
   };
 
-  const handleDelete = async (e: React.MouseEvent, id: string) => {
+  const handleRemovePlan = async (
+    e: React.MouseEvent,
+    plan: TravelPlan,
+  ) => {
     e.stopPropagation();
-    if (!window.confirm('이 여행 계획을 삭제하시겠습니까?')) return;
+    const owner = ownsListedPlan(plan, userId, selectedPlanId, myRole);
 
+    if (owner) {
+      if (
+        !window.confirm(
+          `'${plan.title}' 여행 계획을 삭제하시겠습니까?\n모든 일정이 삭제되며 되돌릴 수 없습니다.`,
+        )
+      ) {
+        return;
+      }
+      try {
+        await deleteTravelPlan(plan.id);
+      } catch {
+        // store에서 error 상태 처리
+      }
+      return;
+    }
+
+    if (
+      !window.confirm(
+        `'${plan.title}' 여행에서 나가시겠습니까?\n일정 자체는 삭제되지 않으며, 내 목록에서만 사라집니다.`,
+      )
+    ) {
+      return;
+    }
     try {
-      await deleteTravelPlan(id);
+      await leaveTravelPlan(plan.id);
     } catch {
       // store에서 error 상태 처리
     }
@@ -145,11 +197,17 @@ export default function SidePanel({ open = true, onClose }: SidePanelProps) {
     ? getDayCount(selectedPlan.startDate, selectedPlan.endDate)
     : 0;
 
+  const compactRail = isLongTrip(dayCount);
+
   // PC에서 접힌 레일: 일자 전환만 빠르게. 모바일은 항상 전체 패널
   return (
     <>
       {sidebarCollapsed && (
-        <aside className="hidden w-14 shrink-0 flex-col border-r border-slate-200 bg-white lg:flex">
+        <aside
+          className={`hidden shrink-0 flex-col border-r border-slate-200 bg-white lg:flex ${
+            compactRail ? 'w-16' : 'w-14'
+          }`}
+        >
           <button
             type="button"
             onClick={toggleSidebar}
@@ -170,21 +228,63 @@ export default function SidePanel({ open = true, onClose }: SidePanelProps) {
             <Plus className="h-4 w-4" />
           </button>
           <div className="mt-3 flex flex-1 flex-col items-center gap-1 overflow-y-auto px-1 pb-3">
-            {Array.from({ length: dayCount }, (_, i) => i + 1).map((day) => (
-              <button
-                key={day}
-                type="button"
-                onClick={() => setActiveDay(day)}
-                className={`flex h-9 w-9 items-center justify-center rounded-lg text-xs font-bold ${
-                  activeDay === day
-                    ? 'bg-primary-600 text-white'
-                    : 'text-slate-600 hover:bg-slate-100'
-                }`}
-                aria-label={`${day}일차`}
-              >
-                {day}
-              </button>
-            ))}
+            {compactRail ? (
+              <>
+                <button
+                  type="button"
+                  disabled={activeDay <= 1}
+                  onClick={() => setActiveDay(activeDay - 1)}
+                  className="flex h-8 w-9 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-40"
+                  aria-label="이전 일차"
+                >
+                  <ChevronUp className="h-4 w-4" />
+                </button>
+                <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary-600 text-xs font-bold text-white">
+                  {activeDay}
+                </span>
+                <button
+                  type="button"
+                  disabled={dayCount > 0 && activeDay >= dayCount}
+                  onClick={() => setActiveDay(activeDay + 1)}
+                  className="flex h-8 w-9 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-40"
+                  aria-label="다음 일차"
+                >
+                  <ChevronDown className="h-4 w-4" />
+                </button>
+                {selectedPlan && (
+                  <select
+                    value={activeDay}
+                    aria-label="일차 점프"
+                    onChange={(e) => setActiveDay(Number(e.target.value))}
+                    className="mt-1 w-12 rounded border border-slate-200 bg-white py-1 text-center text-[10px] font-medium text-slate-700"
+                  >
+                    {Array.from({ length: dayCount }, (_, i) => i + 1).map(
+                      (d) => (
+                        <option key={d} value={d}>
+                          {dayOptionLabel(d, selectedPlan.startDate)}
+                        </option>
+                      ),
+                    )}
+                  </select>
+                )}
+              </>
+            ) : (
+              Array.from({ length: dayCount }, (_, i) => i + 1).map((day) => (
+                <button
+                  key={day}
+                  type="button"
+                  onClick={() => setActiveDay(day)}
+                  className={`flex h-9 w-9 items-center justify-center rounded-lg text-xs font-bold ${
+                    activeDay === day
+                      ? 'bg-primary-600 text-white'
+                      : 'text-slate-600 hover:bg-slate-100'
+                  }`}
+                  aria-label={`${day}일차`}
+                >
+                  {day}
+                </button>
+              ))
+            )}
           </div>
         </aside>
       )}
@@ -354,7 +454,9 @@ export default function SidePanel({ open = true, onClose }: SidePanelProps) {
             새 계획을 추가해 보세요.
           </li>
         ) : (
-          travelPlans.map((plan) => (
+          travelPlans.map((plan) => {
+            const owner = ownsListedPlan(plan, userId, selectedPlanId, myRole);
+            return (
             <li key={plan.id}>
               <div
                 className={`group mb-1 flex w-full items-start rounded-lg px-2 py-2.5 transition ${
@@ -399,15 +501,17 @@ export default function SidePanel({ open = true, onClose }: SidePanelProps) {
                 </button>
                 <button
                   type="button"
-                  onClick={(e) => handleDelete(e, plan.id)}
+                  onClick={(e) => handleRemovePlan(e, plan)}
                   className="shrink-0 rounded p-2 text-slate-400 transition hover:bg-red-50 hover:text-red-500 md:opacity-0 md:group-hover:opacity-100"
-                  aria-label="여행 계획 삭제"
+                  aria-label={owner ? '여행 계획 삭제' : '여행에서 나가기'}
+                  title={owner ? '계획 삭제' : '여행에서 나가기'}
                 >
                   <Trash2 className="h-3.5 w-3.5" />
                 </button>
               </div>
             </li>
-          ))
+            );
+          })
         )}
       </ul>
 

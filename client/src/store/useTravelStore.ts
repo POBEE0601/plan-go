@@ -1,3 +1,4 @@
+// 2026-09-04 초대 멤버 일정 나가기
 // 2026-08-31 Place·Day·초대 연동 Zustand 스토어
 import { create } from 'zustand';
 import type {
@@ -32,6 +33,7 @@ interface TravelStore {
     regionLng: number;
   }) => Promise<void>;
   deleteTravelPlan: (id: string) => Promise<void>;
+  leaveTravelPlan: (id: string) => Promise<void>;
   refreshSelectedPlan: () => Promise<void>;
 
   addPlaceFromSearch: (result: PlaceSearchResult) => Promise<Place | void>;
@@ -75,6 +77,24 @@ interface TravelStore {
 
 const canWriteRole = (role: MemberRole | null) =>
   role === 'owner' || role === 'editor';
+
+const detachPlanFromStore = async (
+  get: () => TravelStore,
+  set: (partial: Partial<TravelStore>) => void,
+  id: string,
+) => {
+  const travelPlans = get().travelPlans.filter((p) => p.id !== id);
+  set({ travelPlans });
+  if (get().selectedPlanId === id) {
+    if (travelPlans[0]) await get().selectPlan(travelPlans[0].id);
+    else
+      set({
+        selectedPlanId: null,
+        selectedPlan: null,
+        myRole: null,
+      });
+  }
+};
 
 export const useTravelStore = create<TravelStore>((set, get) => ({
   travelPlans: [],
@@ -174,23 +194,29 @@ export const useTravelStore = create<TravelStore>((set, get) => ({
     set({ error: null });
     try {
       await travelApi.deletePlan(id);
-      const travelPlans = get().travelPlans.filter((p) => p.id !== id);
-      set({ travelPlans });
-      if (get().selectedPlanId === id) {
-        if (travelPlans[0]) await get().selectPlan(travelPlans[0].id);
-        else
-          set({
-            selectedPlanId: null,
-            selectedPlan: null,
-            myRole: null,
-          });
-      }
+      await detachPlanFromStore(get, set, id);
     } catch (err) {
       set({
         error:
           err instanceof Error
             ? err.message
             : '여행 계획 삭제에 실패했습니다.',
+      });
+      throw err;
+    }
+  },
+
+  leaveTravelPlan: async (id) => {
+    set({ error: null });
+    try {
+      await travelApi.leavePlan(id);
+      await detachPlanFromStore(get, set, id);
+    } catch (err) {
+      set({
+        error:
+          err instanceof Error
+            ? err.message
+            : '여행에서 나가기에 실패했습니다.',
       });
       throw err;
     }
