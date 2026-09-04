@@ -1,4 +1,5 @@
 // 2026-09-01 랜딩 모바일 네비게이션
+// 2026-09-04 로그아웃 후에도 다크 테마가 메인 전면에 맞게 유지
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
@@ -11,6 +12,7 @@ import {
   Users,
   X,
 } from 'lucide-react';
+import ThemeToggle from '../components/ThemeToggle';
 
 export default function HomePage() {
   const [menuOpen, setMenuOpen] = useState(false);
@@ -26,6 +28,7 @@ export default function HomePage() {
             <span className="text-lg font-bold text-slate-900">plan-go</span>
           </Link>
           <div className="hidden items-center gap-3 sm:flex">
+            <ThemeToggle compact />
             <Link
               to="/notices"
               className="rounded-lg px-4 py-2 text-sm font-medium text-slate-600 transition hover:bg-slate-100"
@@ -52,14 +55,17 @@ export default function HomePage() {
               회원가입
             </Link>
           </div>
-          <button
-            type="button"
-            onClick={() => setMenuOpen((v) => !v)}
-            className="flex h-10 w-10 items-center justify-center rounded-lg text-slate-700 hover:bg-slate-100 sm:hidden"
-            aria-label={menuOpen ? '메뉴 닫기' : '메뉴 열기'}
-          >
-            {menuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
-          </button>
+          <div className="flex items-center gap-2 sm:hidden">
+            <ThemeToggle compact />
+            <button
+              type="button"
+              onClick={() => setMenuOpen((v) => !v)}
+              className="flex h-10 w-10 items-center justify-center rounded-lg text-slate-700 hover:bg-slate-100"
+              aria-label={menuOpen ? '메뉴 닫기' : '메뉴 열기'}
+            >
+              {menuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+            </button>
+          </div>
         </div>
         {menuOpen && (
           <div className="border-t border-slate-100 px-4 py-3 sm:hidden">

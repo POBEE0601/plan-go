@@ -198,6 +198,21 @@ html.dark .hover\:text-red-600:hover {
   color: #fca5a5;
 }
 
+/* 2026-09-04 from-/via-/to- 그라데이션은 bg-* 재매핑이 안 되어 메인이 하얗게 남음 */
+html.dark .from-primary-50 {
+  --tw-gradient-from: #0f172a var(--tw-gradient-from-position);
+  --tw-gradient-to: rgb(15 23 42 / 0) var(--tw-gradient-to-position);
+  --tw-gradient-stops: var(--tw-gradient-from), var(--tw-gradient-to);
+}
+html.dark .via-white {
+  --tw-gradient-to: rgb(15 23 42 / 0) var(--tw-gradient-to-position);
+  --tw-gradient-stops: var(--tw-gradient-from), #0f172a var(--tw-gradient-via-position),
+    var(--tw-gradient-to);
+}
+html.dark .to-slate-50 {
+  --tw-gradient-to: #0f172a var(--tw-gradient-to-position);
+}
+
 html.dark .shadow-sm,
 html.dark .shadow-lg,
 html.dark .shadow-xl {
