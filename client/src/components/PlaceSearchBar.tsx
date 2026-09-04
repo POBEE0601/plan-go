@@ -1,6 +1,11 @@
 // 2026-09-01 검색 결과 카테고리 이모지
 // 2026-09-01 모바일: 검색줄 압축·지도 버튼 아이콘화
 // 2026-08-31 상단 장소 검색바 (지도와 분리)
+// 2026-09-03 지도 위 오버레이 검색. 지도 토글 제거
+// 2026-09-04 목록형(bar) / 지도형(overlay) 검색바 분기
+// 2026-09-04 검색 입력 글자색이 배경에 묻히지 않도록 고정
+// 2026-09-04 검색 결과 행 글자색 명시 (라이트 모드 가독성)
+// 2026-09-04 검색 추가 시 풀이 아니라 선택 일차 일정에 바로 배정
 import { useState } from 'react';
 import {
   ChevronDown,
@@ -15,18 +20,21 @@ import {
 import { placesApi } from '../utils/api';
 import { useTravelStore } from '../store/useTravelStore';
 import { useMapUiStore } from '../store/useMapUiStore';
+import { usePlanUiStore } from '../store/usePlanUiStore';
 import { categoryBadge, categoryEmoji } from '../utils/days';
 import type { PlaceSearchResult } from '../types/travel';
 
 interface PlaceSearchBarProps {
   canWrite: boolean;
-  mapVisible: boolean;
-  onToggleMap: () => void;
+  variant?: 'overlay' | 'bar';
+  mapVisible?: boolean;
+  onToggleMap?: () => void;
 }
 
 export default function PlaceSearchBar({
   canWrite,
-  mapVisible,
+  variant = 'overlay',
+  mapVisible = false,
   onToggleMap,
 }: PlaceSearchBarProps) {
   const {
@@ -35,8 +43,15 @@ export default function PlaceSearchBar({
     selectedMapPlace,
     setSelectedMapPlace,
     addPlaceFromSearch,
+    assignToDay,
+    selectedPlan,
+    clearError,
   } = useTravelStore();
-  const { searchResults, setSearchResults } = useMapUiStore();
+  const { searchResults, setSearchResults, clearSearchResults } =
+    useMapUiStore();
+  const activeDay = usePlanUiStore((s) => s.activeDay);
+  const setSheetSnap = usePlanUiStore((s) => s.setSheetSnap);
+  const setPoolOpen = usePlanUiStore((s) => s.setPoolOpen);
 
   const [query, setQuery] = useState('');
   const [searching, setSearching] = useState(false);
@@ -65,7 +80,7 @@ export default function PlaceSearchBar({
       if (data[0]) {
         setMapCenter(data[0].lat, data[0].lng, 14);
         setSelectedMapPlace(data[0]);
-        if (!mapVisible) onToggleMap();
+        if (variant === 'bar' && !mapVisible) onToggleMap?.();
       }
     } catch (err) {
       setSearchError(
@@ -80,7 +95,39 @@ export default function PlaceSearchBar({
     if (!canWrite) return;
     setAdding(true);
     try {
-      await addPlaceFromSearch(place);
+      // 이미 풀에 있는 장소는 재등록하지 않고 일차만 배정
+      const existing = selectedPlan?.places.find(
+        (p) => p.googlePlaceId && p.googlePlaceId === place.googlePlaceId,
+      );
+      let placeId = existing?.id;
+      if (!placeId) {
+        try {
+          const created = await addPlaceFromSearch(place);
+          placeId = created?.id;
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : '';
+          if (!msg.includes('이미 등록된')) throw err;
+          clearError();
+          await useTravelStore.getState().refreshSelectedPlan();
+          placeId = useTravelStore
+            .getState()
+            .selectedPlan?.places.find(
+              (p) => p.googlePlaceId === place.googlePlaceId,
+            )?.id;
+        }
+      }
+      if (!placeId) return;
+      const onDay = useTravelStore
+        .getState()
+        .selectedPlan?.dayAssignments.some(
+          (a) => a.placeId === placeId && a.dayIndex === activeDay,
+        );
+      if (!onDay) await assignToDay(placeId, activeDay);
+      // 하단 일정 목록이 보이도록 풀/검색 카드를 닫고 시트를 연다
+      setPoolOpen(false);
+      setSheetSnap('half');
+      clearSearchResults();
+      setResultsOpen(false);
     } catch {
       // store error
     } finally {
@@ -88,11 +135,36 @@ export default function PlaceSearchBar({
     }
   };
 
+  const handleClear = () => {
+    setQuery('');
+    setSearchError('');
+    clearSearchResults();
+    if (selectedMapPlace && isSearchResult(selectedMapPlace)) {
+      setSelectedMapPlace(null);
+    }
+  };
+
+  const hasResults =
+    searchResults.length > 0 ||
+    (selectedMapPlace && isSearchResult(selectedMapPlace));
+
+  const isBar = variant === 'bar';
+
   return (
-    <div className="shrink-0 border-b border-slate-200 bg-white">
+    <div
+      className={
+        isBar
+          ? 'shrink-0 border-b border-slate-200 bg-white'
+          : 'pointer-events-auto w-full max-w-lg overflow-hidden rounded-xl border border-slate-200 bg-white/95 shadow-sm'
+      }
+    >
       <form
         onSubmit={handleSearch}
-        className="flex items-center gap-2 px-3 py-2 sm:px-4 sm:py-2.5"
+        className={
+          isBar
+            ? 'flex items-center gap-2 px-3 py-2 sm:px-4 sm:py-2.5'
+            : 'flex items-center gap-2 px-2 py-2'
+        }
       >
         <div className="relative min-w-0 flex-1">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
@@ -101,50 +173,63 @@ export default function PlaceSearchBar({
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="장소 검색"
-            className="w-full rounded-lg border border-slate-200 py-2.5 pl-9 pr-3 text-sm outline-none focus:border-primary-500 sm:py-2"
+            className={`w-full rounded-lg border border-slate-200 bg-white py-2 pl-9 text-sm text-slate-900 caret-slate-900 outline-none placeholder:text-slate-400 focus:border-primary-500 ${
+              isBar ? 'pr-3 py-2.5 sm:py-2' : 'pr-8'
+            }`}
           />
+          {!isBar && (query || hasResults) && (
+            <button
+              type="button"
+              onClick={handleClear}
+              className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-0.5 text-slate-400 hover:text-slate-600"
+              aria-label="검색 지우기"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          )}
         </div>
         <button
           type="submit"
           disabled={searching}
-          className="shrink-0 rounded-lg bg-primary-600 px-3 py-2.5 text-sm font-medium text-white hover:bg-primary-700 disabled:opacity-60 sm:px-4 sm:py-2"
+          className="shrink-0 rounded-lg bg-primary-600 px-3 py-2 text-sm font-medium text-white hover:bg-primary-700 disabled:opacity-60"
         >
           {searching ? <Loader2 className="h-4 w-4 animate-spin" /> : '검색'}
         </button>
-        <button
-          type="button"
-          onClick={onToggleMap}
-          className={`flex shrink-0 items-center gap-1.5 rounded-lg border px-2.5 py-2.5 text-xs font-medium transition sm:px-3 sm:py-2 ${
-            mapVisible
-              ? 'border-primary-200 bg-primary-50 text-primary-700'
-              : 'border-slate-200 text-slate-600 hover:bg-slate-50'
-          }`}
-        >
-          {mapVisible ? (
-            <>
-              <X className="h-4 w-4" />
-              <span className="hidden sm:inline">지도 닫기</span>
-            </>
-          ) : (
-            <>
-              <MapIcon className="h-4 w-4" />
-              <span className="hidden sm:inline">지도 보기</span>
-            </>
-          )}
-        </button>
+        {isBar && onToggleMap && (
+          <button
+            type="button"
+            onClick={onToggleMap}
+            className={`flex shrink-0 items-center gap-1.5 rounded-lg border px-2.5 py-2.5 text-xs font-medium transition sm:px-3 sm:py-2 ${
+              mapVisible
+                ? 'border-primary-200 bg-primary-50 text-primary-700'
+                : 'border-slate-200 text-slate-600 hover:bg-slate-50'
+            }`}
+          >
+            {mapVisible ? (
+              <>
+                <X className="h-4 w-4" />
+                <span className="hidden sm:inline">지도 닫기</span>
+              </>
+            ) : (
+              <>
+                <MapIcon className="h-4 w-4" />
+                <span className="hidden sm:inline">지도 보기</span>
+              </>
+            )}
+          </button>
+        )}
       </form>
 
       {searchError && (
-        <p className="bg-red-50 px-4 py-1.5 text-xs text-red-600">{searchError}</p>
+        <p className="bg-red-50 px-3 py-1.5 text-xs text-red-600">{searchError}</p>
       )}
 
-      {(searchResults.length > 0 ||
-        (selectedMapPlace && isSearchResult(selectedMapPlace))) && (
+      {hasResults && (
         <div className="border-t border-slate-100">
           <button
             type="button"
             onClick={() => setResultsOpen((v) => !v)}
-            className="flex w-full items-center justify-between px-4 py-1.5 text-xs text-slate-500 hover:bg-slate-50"
+            className="flex w-full items-center justify-between px-3 py-1.5 text-xs text-slate-600 hover:bg-slate-50"
           >
             <span>검색 결과 {searchResults.length}개</span>
             {resultsOpen ? (
@@ -154,9 +239,9 @@ export default function PlaceSearchBar({
             )}
           </button>
           {resultsOpen && (
-            <div className="max-h-40 overflow-y-auto border-t border-slate-50 sm:max-h-28">
+            <div className="max-h-40 overflow-y-auto border-t border-slate-50">
               {selectedMapPlace && isSearchResult(selectedMapPlace) && (
-                <div className="flex items-start gap-3 border-b border-slate-100 bg-primary-50/40 px-4 py-2">
+                <div className="flex items-start gap-3 border-b border-slate-100 bg-primary-50/40 px-3 py-2">
                   {selectedMapPlace.photoUrl && (
                     <img
                       src={selectedMapPlace.photoUrl}
@@ -196,8 +281,7 @@ export default function PlaceSearchBar({
                       ) : (
                         <Plus className="h-3.5 w-3.5" />
                       )}
-                      <span className="sm:hidden">추가</span>
-                      <span className="hidden sm:inline">풀에 추가</span>
+                      {activeDay}일차에 추가
                     </button>
                   )}
                 </div>
@@ -209,21 +293,23 @@ export default function PlaceSearchBar({
                   onClick={() => {
                     setSelectedMapPlace(r);
                     setMapCenter(r.lat, r.lng, 14);
-                    if (!mapVisible) onToggleMap();
+                    if (variant === 'bar' && !mapVisible) onToggleMap?.();
                   }}
-                  className={`flex min-h-11 w-full items-center gap-2 px-4 py-2 text-left text-sm hover:bg-slate-50 sm:py-1.5 ${
+                  className={`flex min-h-11 w-full items-center gap-2 px-3 py-1.5 text-left text-sm text-slate-800 hover:bg-slate-50 ${
                     selectedMapPlace &&
                     isSearchResult(selectedMapPlace) &&
                     selectedMapPlace.googlePlaceId === r.googlePlaceId
                       ? 'bg-primary-50'
-                      : ''
+                      : 'bg-white'
                   }`}
                 >
                   <span className="shrink-0 text-base">
                     {categoryEmoji(r.category)}
                   </span>
-                  <span className="truncate font-medium">{r.name}</span>
-                  <span className="truncate text-xs text-slate-400">
+                  <span className="truncate font-medium text-slate-800">
+                    {r.name}
+                  </span>
+                  <span className="truncate text-xs text-slate-600">
                     {r.address}
                   </span>
                 </button>

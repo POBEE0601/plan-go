@@ -13,6 +13,8 @@ import type {
   PlaceSearchResult,
   NearbyHospital,
   PlanMember,
+  PrepItem,
+  CitySearchResult,
   RouteDetailsResponse,
   TransitSummary,
   TravelPlan,
@@ -125,6 +127,11 @@ export const placesApi = {
     if (lat != null) params.set('lat', String(lat));
     if (lng != null) params.set('lng', String(lng));
     return request<PlaceSearchResult[]>(`/places/search?${params}`);
+  },
+
+  searchCities: (q: string) => {
+    const params = new URLSearchParams({ q });
+    return request<CitySearchResult[]>(`/places/cities?${params}`);
   },
 
   nearbyHospitals: (
@@ -410,5 +417,32 @@ export const travelApi = {
   acceptInvite: (token: string) =>
     request<TravelPlan>(`/travel-plans/invites/${token}/accept`, {
       method: 'POST',
+    }),
+
+  updatePrepMemo: (planId: string, memo: string) =>
+    request<{ memo: string }>(`/travel-plans/${planId}/prep/memo`, {
+      method: 'PATCH',
+      body: JSON.stringify({ memo }),
+    }),
+
+  addPrepItem: (planId: string, label: string) =>
+    request<PrepItem>(`/travel-plans/${planId}/prep/items`, {
+      method: 'POST',
+      body: JSON.stringify({ label }),
+    }),
+
+  updatePrepItem: (
+    planId: string,
+    itemId: string,
+    data: { checked?: boolean; label?: string; detail?: string },
+  ) =>
+    request<PrepItem>(`/travel-plans/${planId}/prep/items/${itemId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    }),
+
+  deletePrepItem: (planId: string, itemId: string) =>
+    request<void>(`/travel-plans/${planId}/prep/items/${itemId}`, {
+      method: 'DELETE',
     }),
 };

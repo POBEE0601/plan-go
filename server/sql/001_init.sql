@@ -17,7 +17,9 @@ CREATE TABLE IF NOT EXISTS travel_plans (
   end_date TEXT NOT NULL,
   region_name TEXT,
   region_lat DOUBLE PRECISION,
-  region_lng DOUBLE PRECISION
+  region_lng DOUBLE PRECISION,
+  prep_memo TEXT NOT NULL DEFAULT '',
+  prep_seeded BOOLEAN NOT NULL DEFAULT false
 );
 
 CREATE TABLE IF NOT EXISTS places (
@@ -106,7 +108,18 @@ CREATE TABLE IF NOT EXISTS release_posts (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+CREATE TABLE IF NOT EXISTS plan_prep_items (
+  id TEXT PRIMARY KEY,
+  plan_id TEXT NOT NULL REFERENCES travel_plans(id) ON DELETE CASCADE,
+  label TEXT NOT NULL,
+  checked BOOLEAN NOT NULL DEFAULT false,
+  sort_order INTEGER NOT NULL DEFAULT 0,
+  is_template BOOLEAN NOT NULL DEFAULT false,
+  detail TEXT NOT NULL DEFAULT ''
+);
+
 CREATE INDEX IF NOT EXISTS idx_travel_plans_user ON travel_plans(user_id);
+CREATE INDEX IF NOT EXISTS idx_plan_prep_items_plan ON plan_prep_items(plan_id);
 CREATE INDEX IF NOT EXISTS idx_places_plan ON places(plan_id);
 CREATE INDEX IF NOT EXISTS idx_day_assignments_plan ON day_assignments(plan_id);
 CREATE INDEX IF NOT EXISTS idx_plan_members_plan ON plan_members(plan_id);

@@ -2,6 +2,9 @@
 // 2026-09-01 PC 메뉴 접기 + 일자 아코디언
 // 2026-09-01 모바일: 드로어로 전환, 계획 선택 시 자동 닫힘
 // 2026-08-31 여행 계획 생성 시 지역 선택 지원
+// 2026-09-03 일자 목록 중복 제거. 사이드는 계획만
+// 2026-09-04 목록형일 때만 일자 아코디언 복구
+// 2026-09-04 여행 생성 위치를 국가 > 도시로 제한
 import { useEffect, useState } from 'react';
 import {
   Calendar,
@@ -15,13 +18,13 @@ import {
   Trash2,
   X,
 } from 'lucide-react';
-import DayAccordion from './DayAccordion';
 import EmergencyModal from './EmergencyModal';
+import DayAccordion from './DayAccordion';
 import { useTravelStore } from '../store/useTravelStore';
 import { usePlanUiStore } from '../store/usePlanUiStore';
 import { placesApi } from '../utils/api';
 import { getDayCount } from '../utils/days';
-import type { PlaceSearchResult, TravelPlan } from '../types/travel';
+import type { CitySearchResult, TravelPlan } from '../types/travel';
 
 interface SidePanelProps {
   open?: boolean;
@@ -37,7 +40,7 @@ export default function SidePanel({ open = true, onClose }: SidePanelProps) {
     addTravelPlan,
     deleteTravelPlan,
   } = useTravelStore();
-  const { activeDay, setActiveDay, sidebarCollapsed, toggleSidebar } =
+  const { activeDay, setActiveDay, sidebarCollapsed, toggleSidebar, layoutMode } =
     usePlanUiStore();
 
   const [showForm, setShowForm] = useState(false);
@@ -46,16 +49,16 @@ export default function SidePanel({ open = true, onClose }: SidePanelProps) {
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [regionQuery, setRegionQuery] = useState('');
-  const [regionResults, setRegionResults] = useState<PlaceSearchResult[]>([]);
+  const [regionResults, setRegionResults] = useState<CitySearchResult[]>([]);
   const [selectedRegion, setSelectedRegion] =
-    useState<PlaceSearchResult | null>(null);
+    useState<CitySearchResult | null>(null);
   const [searchingRegion, setSearchingRegion] = useState(false);
   const [regionError, setRegionError] = useState('');
   const [emergencyPlan, setEmergencyPlan] = useState<TravelPlan | null>(null);
 
   // 지역명 입력 후 짧은 디바운스로 자동 검색
   useEffect(() => {
-    if (selectedRegion && regionQuery === selectedRegion.name) return;
+    if (selectedRegion && regionQuery === selectedRegion.label) return;
     if (!regionQuery.trim() || regionQuery.trim().length < 2) {
       setRegionResults([]);
       return;
@@ -65,8 +68,8 @@ export default function SidePanel({ open = true, onClose }: SidePanelProps) {
       setSearchingRegion(true);
       setRegionError('');
       try {
-        // "지역/도시" 검색 정확도를 위해 키워드 보강
-        const data = await placesApi.search(`${regionQuery.trim()} 여행`);
+        // 국가·도시만 검색. 세부 장소는 일정에서 등록
+        const data = await placesApi.searchCities(regionQuery.trim());
         setRegionResults(data.slice(0, 6));
       } catch (err) {
         setRegionError(
@@ -95,7 +98,7 @@ export default function SidePanel({ open = true, onClose }: SidePanelProps) {
     e.preventDefault();
     if (!title.trim() || !startDate || !endDate) return;
     if (!selectedRegion) {
-      setRegionError('검색 결과에서 지역을 선택해 주세요.');
+      setRegionError('검색 결과에서 도시를 선택해 주세요.');
       return;
     }
 
@@ -105,7 +108,7 @@ export default function SidePanel({ open = true, onClose }: SidePanelProps) {
         title: title.trim(),
         startDate,
         endDate,
-        regionName: selectedRegion.name,
+        regionName: selectedRegion.label,
         regionLat: selectedRegion.lat,
         regionLng: selectedRegion.lng,
       });
@@ -131,9 +134,9 @@ export default function SidePanel({ open = true, onClose }: SidePanelProps) {
     }
   };
 
-  const pickRegion = (region: PlaceSearchResult) => {
+  const pickRegion = (region: CitySearchResult) => {
     setSelectedRegion(region);
-    setRegionQuery(region.name);
+    setRegionQuery(region.label);
     setRegionResults([]);
     setRegionError('');
   };
@@ -256,7 +259,7 @@ export default function SidePanel({ open = true, onClose }: SidePanelProps) {
                 <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
                 <input
                   type="text"
-                  placeholder="지역명 검색 (예: 제주, 오사카)"
+                  placeholder="도시 검색 (예: 도쿄, 오사카)"
                   value={regionQuery}
                   onChange={(e) => {
                     setRegionQuery(e.target.value);
@@ -271,10 +274,14 @@ export default function SidePanel({ open = true, onClose }: SidePanelProps) {
                 )}
               </div>
 
+              <p className="mt-1 text-[11px] text-slate-400">
+                국가 &gt; 도시만 선택합니다. 세부 장소는 일정에서 추가하세요.
+              </p>
+
               {selectedRegion && (
                 <p className="mt-1 flex items-center gap-1 text-[11px] text-primary-700">
                   <MapPin className="h-3 w-3" />
-                  선택됨: {selectedRegion.name}
+                  선택됨: {selectedRegion.label}
                 </p>
               )}
 
@@ -292,7 +299,7 @@ export default function SidePanel({ open = true, onClose }: SidePanelProps) {
                         className="flex w-full flex-col px-3 py-2 text-left hover:bg-primary-50"
                       >
                         <span className="text-sm font-medium text-slate-800">
-                          {r.name}
+                          {r.label}
                         </span>
                         <span className="truncate text-[11px] text-slate-400">
                           {r.address}
@@ -333,7 +340,13 @@ export default function SidePanel({ open = true, onClose }: SidePanelProps) {
         </div>
       )}
 
-      <ul className="max-h-48 shrink-0 overflow-y-auto p-2 lg:max-h-[42%]">
+      <ul
+        className={
+          layoutMode === 'classic'
+            ? 'max-h-48 shrink-0 overflow-y-auto p-2 lg:max-h-[42%]'
+            : 'min-h-0 flex-1 overflow-y-auto p-2'
+        }
+      >
         {travelPlans.length === 0 ? (
           <li className="px-3 py-8 text-center text-sm text-slate-400">
             아직 여행 계획이 없습니다.
@@ -398,14 +411,16 @@ export default function SidePanel({ open = true, onClose }: SidePanelProps) {
         )}
       </ul>
 
-      <div className="flex min-h-0 flex-1 flex-col border-t border-slate-200">
-        <p className="px-4 py-2 text-xs font-semibold uppercase tracking-wide text-slate-400">
-          일자별 일정
-        </p>
-        <div className="min-h-0 flex-1 overflow-y-auto">
-          <DayAccordion onPickDay={onClose} />
+      {layoutMode === 'classic' && (
+        <div className="hidden min-h-0 flex-1 flex-col border-t border-slate-200 lg:flex">
+          <p className="px-4 py-2 text-xs font-semibold uppercase tracking-wide text-slate-400">
+            일자별 일정
+          </p>
+          <div className="min-h-0 flex-1 overflow-y-auto">
+            <DayAccordion onPickDay={onClose} />
+          </div>
         </div>
-      </div>
+      )}
     </aside>
     <EmergencyModal
       open={emergencyPlan != null}

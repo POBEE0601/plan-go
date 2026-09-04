@@ -20,11 +20,13 @@ import type {
   MemberRole,
   Place,
   PlanMember,
+  PrepItem,
   TravelPlan,
 } from '../types/travel.js';
 import type { User, UserPublic } from '../types/user.js';
 import { isAdminEmail } from '../utils/admin.js';
 import { getDayCount } from '../utils/days.js';
+import { PREP_TEMPLATE_LABELS } from '../data/prepTemplates.js';
 import { pool } from './pool.js';
 
 export const generateId = (): string =>
@@ -100,10 +102,9 @@ const mapMember = (row: Record<string, unknown>): PlanMember => ({
   createdAt: asIso(row.created_at),
 });
 
-const mapPlanRow = (row: Record<string, unknown>): Omit<
-  TravelPlan,
-  'places' | 'dayAssignments' | 'members'
-> => ({
+const mapPlanRow = (
+  row: Record<string, unknown>,
+): Omit<TravelPlan, 'places' | 'dayAssignments' | 'members' | 'prepItems'> => ({
   id: String(row.id),
   userId: String(row.user_id),
   title: String(row.title),
@@ -112,6 +113,17 @@ const mapPlanRow = (row: Record<string, unknown>): Omit<
   regionName: row.region_name ? String(row.region_name) : undefined,
   regionLat: row.region_lat == null ? undefined : Number(row.region_lat),
   regionLng: row.region_lng == null ? undefined : Number(row.region_lng),
+  prepMemo: row.prep_memo == null ? '' : String(row.prep_memo),
+});
+
+const mapPrepItem = (row: Record<string, unknown>): PrepItem => ({
+  id: String(row.id),
+  planId: String(row.plan_id),
+  label: String(row.label),
+  checked: Boolean(row.checked),
+  sortOrder: Number(row.sort_order),
+  isTemplate: Boolean(row.is_template),
+  detail: row.detail == null ? '' : String(row.detail),
 });
 
 const mapAttachments = (value: unknown): BoardAttachment[] =>
@@ -193,7 +205,7 @@ const assemblePlans = async (
   if (!planRows.length) return [];
   const ids = planRows.map((r) => String(r.id));
 
-  const [placeRes, dayRes, memberRes] = await Promise.all([
+  const [placeRes, dayRes, memberRes, prepRes] = await Promise.all([
     pool.query(`SELECT * FROM places WHERE plan_id = ANY($1::text[])`, [ids]),
     pool.query(
       `SELECT * FROM day_assignments WHERE plan_id = ANY($1::text[]) ORDER BY day_index, sort_order`,
@@ -202,6 +214,10 @@ const assemblePlans = async (
     pool.query(`SELECT * FROM plan_members WHERE plan_id = ANY($1::text[])`, [
       ids,
     ]),
+    pool.query(
+      `SELECT * FROM plan_prep_items WHERE plan_id = ANY($1::text[]) ORDER BY sort_order, id`,
+      [ids],
+    ),
   ]);
 
   const places = placeRes.rows.map((r) => mapPlace(r as Record<string, unknown>));
@@ -210,6 +226,9 @@ const assemblePlans = async (
   );
   const members = memberRes.rows.map((r) =>
     mapMember(r as Record<string, unknown>),
+  );
+  const prepItems = prepRes.rows.map((r) =>
+    mapPrepItem(r as Record<string, unknown>),
   );
 
   const userIds = [
@@ -246,6 +265,8 @@ const assemblePlans = async (
       places: places.filter((p) => p.planId === base.id),
       dayAssignments: days.filter((d) => d.planId === base.id),
       members: nextMembers.map((m) => enrichMember(m, users)),
+      prepMemo: base.prepMemo ?? '',
+      prepItems: prepItems.filter((p) => p.planId === base.id),
     };
   });
 };
@@ -379,10 +400,43 @@ export const getAccessiblePlans = async (
   return assemblePlans(rows as Record<string, unknown>[]);
 };
 
+const insertPrepTemplates = async (client: PoolClient, planId: string) => {
+  for (let i = 0; i < PREP_TEMPLATE_LABELS.length; i += 1) {
+    await client.query(
+      `INSERT INTO plan_prep_items
+        (id, plan_id, label, checked, sort_order, is_template, detail)
+       VALUES ($1, $2, $3, false, $4, true, '')`,
+      [generateId(), planId, PREP_TEMPLATE_LABELS[i], i],
+    );
+  }
+  await client.query(
+    `UPDATE travel_plans SET prep_seeded = true WHERE id = $1`,
+    [planId],
+  );
+};
+
+export const seedPrepIfNeeded = async (planId: string): Promise<void> => {
+  const { rows } = await pool.query(
+    `SELECT prep_seeded FROM travel_plans WHERE id = $1`,
+    [planId],
+  );
+  if (!rows[0] || rows[0].prep_seeded) return;
+
+  await withTx(async (client) => {
+    const locked = await client.query(
+      `SELECT prep_seeded FROM travel_plans WHERE id = $1 FOR UPDATE`,
+      [planId],
+    );
+    if (!locked.rows[0] || locked.rows[0].prep_seeded) return;
+    await insertPrepTemplates(client, planId);
+  });
+};
+
 export const getTravelPlanById = async (
   id: string,
   userId?: string,
 ): Promise<TravelPlan | null> => {
+  await seedPrepIfNeeded(id);
   const plan = await loadPlan(id);
   if (!plan) return null;
   if (userId && !canRead(plan, userId)) return null;
@@ -423,6 +477,7 @@ export const createTravelPlan = async (
        VALUES ($1, $2, $3, $4, $5, 'owner', 'accepted', $6)`,
       [memberId, id, userId, user?.email ?? '', user?.name ?? 'Owner', now],
     );
+    await insertPrepTemplates(client, id);
   });
 
   const plan = await loadPlan(id);
@@ -438,6 +493,95 @@ export const deleteTravelPlan = async (
   if (!plan || !canManage(plan, userId)) return false;
   await pool.query(`DELETE FROM travel_plans WHERE id = $1`, [id]);
   return true;
+};
+
+// --- 여행 준비 메모·체크리스트 ---
+
+export const updatePrepMemo = async (
+  planId: string,
+  userId: string,
+  memo: string,
+): Promise<string | null> => {
+  const plan = await requireWritablePlan(planId, userId);
+  if (!plan) return null;
+  const next = memo.slice(0, 8000);
+  await pool.query(`UPDATE travel_plans SET prep_memo = $1 WHERE id = $2`, [
+    next,
+    planId,
+  ]);
+  return next;
+};
+
+export const addPrepItem = async (
+  planId: string,
+  userId: string,
+  label: string,
+): Promise<PrepItem | null> => {
+  const plan = await requireWritablePlan(planId, userId);
+  if (!plan) return null;
+  const trimmed = label.trim().slice(0, 80);
+  if (!trimmed) throw new Error('항목 이름을 입력해 주세요.');
+
+  const sortOrder = (plan.prepItems ?? []).length;
+  const item: PrepItem = {
+    id: generateId(),
+    planId,
+    label: trimmed,
+    checked: false,
+    sortOrder,
+    isTemplate: false,
+    detail: '',
+  };
+  await pool.query(
+    `INSERT INTO plan_prep_items
+      (id, plan_id, label, checked, sort_order, is_template, detail)
+     VALUES ($1, $2, $3, false, $4, false, '')`,
+    [item.id, item.planId, item.label, item.sortOrder],
+  );
+  return item;
+};
+
+export const updatePrepItem = async (
+  planId: string,
+  userId: string,
+  itemId: string,
+  patch: { checked?: boolean; label?: string; detail?: string },
+): Promise<PrepItem | null> => {
+  const plan = await requireWritablePlan(planId, userId);
+  if (!plan) return null;
+  const current = (plan.prepItems ?? []).find((p) => p.id === itemId);
+  if (!current) return null;
+
+  const label =
+    patch.label != null ? patch.label.trim().slice(0, 80) : current.label;
+  if (!label) throw new Error('항목 이름을 입력해 주세요.');
+  const checked = patch.checked ?? current.checked;
+  const detail =
+    patch.detail != null ? patch.detail.slice(0, 4000) : (current.detail ?? '');
+
+  const { rows } = await pool.query(
+    `UPDATE plan_prep_items
+        SET label = $1, checked = $2, detail = $3
+      WHERE id = $4 AND plan_id = $5
+      RETURNING *`,
+    [label, checked, detail, itemId, planId],
+  );
+  return rows[0] ? mapPrepItem(rows[0] as Record<string, unknown>) : null;
+};
+
+export const deletePrepItem = async (
+  planId: string,
+  userId: string,
+  itemId: string,
+): Promise<boolean> => {
+  const plan = await requireWritablePlan(planId, userId);
+  if (!plan) return false;
+  if (!(plan.prepItems ?? []).some((p) => p.id === itemId)) return false;
+  const result = await pool.query(
+    `DELETE FROM plan_prep_items WHERE id = $1 AND plan_id = $2`,
+    [itemId, planId],
+  );
+  return (result.rowCount ?? 0) > 0;
 };
 
 // --- Places ---

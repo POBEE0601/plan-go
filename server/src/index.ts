@@ -32,6 +32,14 @@ try {
   process.exit(1);
 }
 
+const { ensurePrepSchema } = await import('./db/migrate.js');
+try {
+  await ensurePrepSchema();
+} catch (err) {
+  console.error('준비 체크리스트 스키마 적용 실패:', err);
+  process.exit(1);
+}
+
 const { default: app } = await import('./app.js');
 
 const PORT = Number(process.env.PORT) || 3001;

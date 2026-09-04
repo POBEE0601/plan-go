@@ -19,6 +19,10 @@ import {
   updateAssignment,
   updateMemberRole,
   updatePlace,
+  updatePrepMemo,
+  addPrepItem,
+  updatePrepItem,
+  deletePrepItem,
 } from '../db/database.js';
 import { authMiddleware, type AuthRequest } from '../middleware/auth.js';
 import type {
@@ -37,7 +41,7 @@ const param = (value: string | string[]): string =>
 const handleError = (res: import('express').Response, err: unknown) => {
   const message =
     err instanceof Error ? err.message : '요청 처리 중 오류가 발생했습니다.';
-  const status = /찾을 수 없|권한|이미/.test(message) ? 400 : 500;
+  const status = /찾을 수 없|권한|이미|입력/.test(message) ? 400 : 500;
   res.status(status).json({ message });
 };
 
@@ -339,6 +343,78 @@ router.delete('/:planId/members/:memberId', async (req: AuthRequest, res) => {
     return;
   }
   res.status(204).send();
+});
+
+// 여행 준비 메모·체크리스트
+router.patch('/:planId/prep/memo', async (req: AuthRequest, res) => {
+  try {
+    const memo = String((req.body as { memo?: string }).memo ?? '');
+    const saved = await updatePrepMemo(
+      param(req.params.planId),
+      req.userId!,
+      memo,
+    );
+    if (saved == null) {
+      res.status(403).json({ message: '메모를 수정할 권한이 없습니다.' });
+      return;
+    }
+    res.json({ memo: saved });
+  } catch (err) {
+    handleError(res, err);
+  }
+});
+
+router.post('/:planId/prep/items', async (req: AuthRequest, res) => {
+  try {
+    const label = String((req.body as { label?: string }).label ?? '');
+    const item = await addPrepItem(
+      param(req.params.planId),
+      req.userId!,
+      label,
+    );
+    if (!item) {
+      res.status(403).json({ message: '항목을 추가할 권한이 없습니다.' });
+      return;
+    }
+    res.status(201).json(item);
+  } catch (err) {
+    handleError(res, err);
+  }
+});
+
+router.patch('/:planId/prep/items/:itemId', async (req: AuthRequest, res) => {
+  try {
+    const item = await updatePrepItem(
+      param(req.params.planId),
+      req.userId!,
+      param(req.params.itemId),
+      req.body as { checked?: boolean; label?: string; detail?: string },
+    );
+    if (!item) {
+      res.status(403).json({ message: '항목을 수정할 권한이 없습니다.' });
+      return;
+    }
+    res.json(item);
+  } catch (err) {
+    handleError(res, err);
+  }
+});
+
+router.delete('/:planId/prep/items/:itemId', async (req: AuthRequest, res) => {
+  try {
+    const ok = await deletePrepItem(
+      param(req.params.planId),
+      req.userId!,
+      param(req.params.itemId),
+    );
+    if (!ok) {
+      res.status(403).json({ message: '항목을 삭제할 권한이 없습니다.' });
+      return;
+    }
+    res.status(204).send();
+  } catch (err) {
+    handleError(res, err);
+  }
 });
 
 export default router;

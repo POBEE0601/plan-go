@@ -8,6 +8,23 @@
       content="width=device-width, initial-scale=1.0, viewport-fit=cover"
     />
     <title>plan-go</title>
+    <script>
+      // 2026-09-04 첫 페인트 전에 테마 적용 (깜빡임 방지)
+      try {
+        var t = localStorage.getItem('plan-go-theme');
+        var dark =
+          t === 'dark' ||
+          (t !== 'light' &&
+            window.matchMedia('(prefers-color-scheme: dark)').matches);
+        if (dark) {
+          document.documentElement.classList.add('dark');
+          document.documentElement.style.colorScheme = 'dark';
+        } else {
+          document.documentElement.classList.remove('dark');
+          document.documentElement.style.colorScheme = 'light';
+        }
+      } catch (e) {}
+    </script>
   </head>
   <body>
     <div id="root"></div>

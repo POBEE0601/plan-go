@@ -1,4 +1,5 @@
 // 2026-09-01 모바일 헤더: 햄버거 메뉴·여행 목록 버튼·컴팩트 액션
+// 2026-09-04 다크/라이트 전환 버튼
 import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
@@ -16,6 +17,7 @@ import {
 } from 'lucide-react';
 import { useAuthStore } from '../store/useAuthStore';
 import { useTravelStore } from '../store/useTravelStore';
+import ThemeToggle from './ThemeToggle';
 
 interface HeaderProps {
   onInvite?: () => void;
@@ -119,6 +121,7 @@ export default function Header({
         </div>
 
         <div className="flex shrink-0 items-center gap-1.5 sm:gap-3">
+          <ThemeToggle compact />
           {roleLabel && (
             <span className="hidden rounded-full bg-slate-100 px-2.5 py-1 text-xs text-slate-600 sm:inline">
               {roleLabel}
@@ -276,6 +279,9 @@ export default function Header({
             </nav>
 
             <div className="border-t border-slate-100 p-3">
+              <div className="mb-2">
+                <ThemeToggle />
+              </div>
               {isAuthenticated ? (
                 <button
                   type="button"

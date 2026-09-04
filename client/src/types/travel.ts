@@ -46,6 +46,16 @@ export interface PlanMember {
   createdAt: string;
 }
 
+export interface PrepItem {
+  id: string;
+  planId: string;
+  label: string;
+  checked: boolean;
+  sortOrder: number;
+  isTemplate: boolean;
+  detail: string;
+}
+
 export interface TravelPlan {
   id: string;
   userId: string;
@@ -56,6 +66,8 @@ export interface TravelPlan {
   regionName?: string;
   regionLat?: number;
   regionLng?: number;
+  prepMemo?: string;
+  prepItems?: PrepItem[];
   places: Place[];
   dayAssignments: DayAssignment[];
   members: PlanMember[];
@@ -89,6 +101,16 @@ export interface PlaceSearchResult {
   photoUrl?: string;
   types: string[];
   category: PlaceCategory;
+}
+
+export interface CitySearchResult {
+  googlePlaceId: string;
+  cityName: string;
+  countryName: string;
+  label: string;
+  address: string;
+  lat: number;
+  lng: number;
 }
 
 export interface InvitePreview {

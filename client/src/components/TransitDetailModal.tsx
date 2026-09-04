@@ -1,5 +1,6 @@
 // 2026-09-01 모바일: 하단 시트 레이아웃
 // 2026-08-31 상세 길찾기: 실제 Directions + 지도 경로 + 스텝 스크롤 연동
+// 2026-09-04 모바일 팝업에서는 지도 숨김, 구글맵 링크는 도보 탭만
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { GoogleMap, Marker, Polyline } from '@react-google-maps/api';
 import {
@@ -332,7 +333,7 @@ export default function TransitDetailModal({
                     {activeRoute.distanceText}
                     {activeRoute.summary ? ` · ${activeRoute.summary}` : ''}
                   </p>
-                  {(activeMode === 'driving' || activeMode === 'transit') && (
+                  {activeMode === 'walking' && (
                     <MapsNavButton href={mapsUrl} mode={activeMode} />
                   )}
                 </div>
@@ -358,15 +359,16 @@ export default function TransitDetailModal({
                   {modeLabel(activeMode)} 상세 경로를 API로 받지 못했습니다.
                 </p>
                 <p className="mt-1 text-xs text-slate-500">
-                  오른쪽 지도는 Google 지도 길찾기 결과입니다. 목록을 보려면
-                  아래 링크로 지도를 여세요.
+                  상세 경로는 Google 지도에서 확인할 수 있습니다.
                 </p>
-                <MapsNavButton href={mapsUrl} mode={activeMode} />
+                {activeMode === 'walking' && (
+                  <MapsNavButton href={mapsUrl} mode={activeMode} />
+                )}
               </div>
             )}
           </div>
 
-          <div className="relative h-56 shrink-0 border-t border-slate-100 md:h-auto md:flex-1 md:border-t-0">
+          <div className="relative hidden shrink-0 border-t border-slate-100 md:block md:h-auto md:flex-1 md:border-t-0">
             {isLoaded && activeRoute ? (
               <GoogleMap
                 mapContainerStyle={{ width: '100%', height: '100%' }}

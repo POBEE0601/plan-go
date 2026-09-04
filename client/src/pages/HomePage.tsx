@@ -113,7 +113,8 @@ export default function HomePage() {
             className="flex items-center justify-center gap-2 rounded-xl bg-primary-600 px-6 py-3 text-base font-semibold text-white shadow-lg shadow-primary-200 transition hover:bg-primary-700"
           >
             <UserPlus className="h-5 w-5" />
-            무료로 시작하기
+            {/* 2026-09-03 메인 CTA 문구를 '회원가입'으로 변경 */}
+            회원가입
           </Link>
           <Link
             to="/login"

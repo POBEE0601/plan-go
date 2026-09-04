@@ -1,5 +1,6 @@
 // 2026-09-01 모바일: 전체 화면 오버레이, 데스크톱은 우측 정사각
 // 2026-08-31 정사각형 지도 패널 (기본 숨김, 우측 슬롯)
+// 2026-09-04 다크 테마 지도 스타일
 import { useEffect, useRef } from 'react';
 import {
   GoogleMap,
@@ -9,6 +10,8 @@ import { Loader2, Map as MapIcon, X } from 'lucide-react';
 import { useTravelStore } from '../store/useTravelStore';
 import { useMapUiStore } from '../store/useMapUiStore';
 import { useGoogleMaps } from '../hooks/useGoogleMaps';
+import { useThemeStore } from '../store/useThemeStore';
+import { DARK_MAP_STYLES } from '../utils/mapTheme';
 import type { Place, PlaceSearchResult } from '../types/travel';
 
 const mapContainerStyle = { width: '100%', height: '100%' };
@@ -28,8 +31,15 @@ export default function SquareMap({ onClose }: SquareMapProps) {
   const searchResults = useMapUiStore((s) => s.searchResults);
 
   const { isLoaded, loadError } = useGoogleMaps();
+  const theme = useThemeStore((s) => s.theme);
 
   const mapRef = useRef<google.maps.Map | null>(null);
+
+  useEffect(() => {
+    mapRef.current?.setOptions({
+      styles: theme === 'dark' ? DARK_MAP_STYLES : [],
+    });
+  }, [theme]);
 
   useEffect(() => {
     if (!mapRef.current) return;
@@ -91,6 +101,7 @@ export default function SquareMap({ onClose }: SquareMapProps) {
               mapTypeControl: false,
               fullscreenControl: false,
               zoomControl: true,
+              styles: theme === 'dark' ? DARK_MAP_STYLES : [],
             }}
           >
             {searchResults.map((r) => (

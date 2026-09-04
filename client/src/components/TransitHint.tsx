@@ -1,4 +1,7 @@
 // 2026-09-01 클릭 전 3모드 Directions 금지. 차량은 지도와 캐시 공유
+// 2026-09-03 밀도 타임라인용 compact 칩
+// 2026-09-04 라이트 모드에서 도보/대중교통 칩 대비 강화
+// 2026-09-04 목록의 구글맵 버튼 제거. 팝업 도보 탭에서만 연결
 import { useEffect, useState } from 'react';
 import { Bus, Car, ChevronRight, Footprints } from 'lucide-react';
 import { useGoogleMaps } from '../hooks/useGoogleMaps';
@@ -15,6 +18,7 @@ interface TransitHintProps {
   from: Place;
   to: Place;
   segmentKey: string;
+  compact?: boolean;
 }
 
 const MODE_ORDER: TravelModeKey[] = ['walking', 'transit', 'driving'];
@@ -28,7 +32,12 @@ const modeIcon = (mode: TravelModeKey) => {
 const modeLabel = (mode: TravelModeKey) =>
   mode === 'walking' ? '도보' : mode === 'transit' ? '대중교통' : '차량';
 
-export default function TransitHint({ from, to, segmentKey }: TransitHintProps) {
+export default function TransitHint({
+  from,
+  to,
+  segmentKey,
+  compact = false,
+}: TransitHintProps) {
   const { isLoaded } = useGoogleMaps();
   const [driving, setDriving] = useState<JsRouteDetail | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
@@ -66,6 +75,41 @@ export default function TransitHint({ from, to, segmentKey }: TransitHintProps) 
     setDetailOpen(true);
   };
 
+  // 2026-09-03 밀도 타임라인용 한 줄 칩
+  if (compact) {
+    return (
+      <>
+        <div className="flex items-center justify-center gap-1 py-0.5">
+          {MODE_ORDER.map((mode) => {
+            const isDriving = mode === 'driving';
+            return (
+              <button
+                key={mode}
+                type="button"
+                onClick={() => openDetail(mode)}
+                className={`inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[10px] ${
+                  isDriving
+                    ? 'bg-primary-50 font-medium text-primary-700'
+                    : 'text-slate-600 hover:bg-slate-50 hover:text-slate-800'
+                }`}
+              >
+                {modeIcon(mode)}
+                {isDriving && driving ? driving.durationText : modeLabel(mode)}
+              </button>
+            );
+          })}
+        </div>
+        <TransitDetailModal
+          open={detailOpen}
+          from={from}
+          to={to}
+          initialMode={detailMode}
+          onClose={() => setDetailOpen(false)}
+        />
+      </>
+    );
+  }
+
   return (
     <>
       <div
@@ -102,9 +146,7 @@ export default function TransitHint({ from, to, segmentKey }: TransitHintProps) 
                   >
                     {modeIcon(mode)}
                     {modeLabel(mode)}{' '}
-                    {isDriving && driving
-                      ? driving.durationText
-                      : '보기'}
+                    {isDriving && driving ? driving.durationText : '보기'}
                   </button>
                 );
               })}

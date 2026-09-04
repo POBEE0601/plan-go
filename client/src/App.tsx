@@ -1,6 +1,7 @@
 // 2026-09-01 로딩 화면 모바일 높이
 // 2026-08-31 라우팅: 홈·인증·대시보드·초대·고객게시판·공지·배포
-import { useEffect } from 'react';
+// 2026-09-04 테마 클래스 동기화
+import { useEffect, useLayoutEffect } from 'react';
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import { Loader2 } from 'lucide-react';
 import ProtectedRoute from './components/ProtectedRoute';
@@ -13,6 +14,7 @@ import BoardPage from './pages/BoardPage';
 import NoticePage from './pages/NoticePage';
 import ReleasePage from './pages/ReleasePage';
 import { useAuthStore } from './store/useAuthStore';
+import { applyThemeClass, useThemeStore } from './store/useThemeStore';
 
 function AppRoutes() {
   const { initialize, isLoading, isAuthenticated } = useAuthStore();
@@ -23,7 +25,7 @@ function AppRoutes() {
 
   if (isLoading) {
     return (
-      <div className="flex min-h-dvh items-center justify-center bg-slate-50">
+      <div className="flex min-h-dvh items-center justify-center bg-slate-50 dark:bg-slate-950">
         <Loader2 className="h-8 w-8 animate-spin text-primary-600" />
       </div>
     );
@@ -75,6 +77,12 @@ function AppRoutes() {
 }
 
 export default function App() {
+  const theme = useThemeStore((s) => s.theme);
+
+  useLayoutEffect(() => {
+    applyThemeClass(theme);
+  }, [theme]);
+
   return (
     <BrowserRouter>
       <AppRoutes />

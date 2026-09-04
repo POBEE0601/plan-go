@@ -1,5 +1,9 @@
 // 2026-08-31 Google Places 검색·상세 조회 서비스
-import type { PlaceCategory, PlaceSearchResult } from '../types/travel.js';
+import type {
+  CitySearchResult,
+  PlaceCategory,
+  PlaceSearchResult,
+} from '../types/travel.js';
 
 // dotenv 로드 이후에 읽히도록 호출 시점에 조회
 const getApiKey = (): string => process.env.GOOGLE_MAPS_API_KEY ?? '';
@@ -124,6 +128,160 @@ export const getPlaceDetails = async (
     types,
     category: mapCategory(types),
   };
+};
+
+interface AddressComponent {
+  long_name: string;
+  short_name: string;
+  types: string[];
+}
+
+interface GooglePlaceDetailsResult extends GoogleTextSearchResult {
+  address_components?: AddressComponent[];
+}
+
+const componentName = (
+  components: AddressComponent[] | undefined,
+  type: string,
+): string =>
+  components?.find((c) => c.types.includes(type))?.long_name?.trim() ?? '';
+
+const toCityResult = (
+  item: GooglePlaceDetailsResult,
+): CitySearchResult | null => {
+  const types = item.types ?? [];
+  const isPoi = types.some((t) =>
+    /restaurant|lodging|store|cafe|bar|museum|park|airport|station|point_of_interest/.test(
+      t,
+    ),
+  );
+  const isCity = types.some((t) =>
+    /locality|administrative_area_level_1|administrative_area_level_2|administrative_area_level_3|postal_town|country/.test(
+      t,
+    ),
+  );
+  if (isPoi && !isCity) return null;
+
+  const countryName =
+    componentName(item.address_components, 'country') ||
+    item.formatted_address?.split(',').at(-1)?.trim() ||
+    '';
+  const cityName =
+    componentName(item.address_components, 'locality') ||
+    componentName(item.address_components, 'postal_town') ||
+    componentName(item.address_components, 'administrative_area_level_1') ||
+    item.name;
+  if (!cityName || item.geometry?.location == null) return null;
+
+  const label =
+    countryName && countryName !== cityName
+      ? `${countryName} > ${cityName}`
+      : cityName;
+
+  return {
+    googlePlaceId: item.place_id,
+    cityName,
+    countryName: countryName || cityName,
+    label,
+    address: item.formatted_address ?? label,
+    lat: item.geometry.location.lat,
+    lng: item.geometry.location.lng,
+  };
+};
+
+const fetchCityDetails = async (
+  placeId: string,
+): Promise<CitySearchResult | null> => {
+  const API_KEY = getApiKey();
+  const params = new URLSearchParams({
+    place_id: placeId,
+    key: API_KEY,
+    language: 'ko',
+    fields: 'place_id,name,formatted_address,geometry,address_components,types',
+  });
+  const res = await fetch(
+    `https://maps.googleapis.com/maps/api/place/details/json?${params}`,
+  );
+  const data = (await res.json()) as {
+    status: string;
+    result?: GooglePlaceDetailsResult;
+  };
+  if (data.status !== 'OK' || !data.result) return null;
+  return toCityResult(data.result);
+};
+
+const searchCitiesByText = async (
+  query: string,
+): Promise<CitySearchResult[]> => {
+  const API_KEY = getApiKey();
+  const params = new URLSearchParams({
+    query,
+    type: 'locality',
+    key: API_KEY,
+    language: 'ko',
+  });
+  const res = await fetch(
+    `https://maps.googleapis.com/maps/api/place/textsearch/json?${params}`,
+  );
+  const data = (await res.json()) as {
+    status: string;
+    results?: GooglePlaceDetailsResult[];
+    error_message?: string;
+  };
+  if (data.status !== 'OK' && data.status !== 'ZERO_RESULTS') {
+    throw new Error(
+      data.error_message ?? `도시 검색 실패: ${data.status}`,
+    );
+  }
+  const mapped = await Promise.all(
+    (data.results ?? []).slice(0, 6).map((item) => fetchCityDetails(item.place_id)),
+  );
+  return mapped.filter((item): item is CitySearchResult => item != null);
+};
+
+// 2026-09-04 일정 생성용 국가·도시 검색. POI는 제외
+export const searchCities = async (
+  query: string,
+): Promise<CitySearchResult[]> => {
+  const API_KEY = getApiKey();
+  if (!API_KEY) {
+    throw new Error('GOOGLE_MAPS_API_KEY가 설정되지 않았습니다.');
+  }
+
+  const params = new URLSearchParams({
+    input: query,
+    types: '(cities)',
+    language: 'ko',
+    key: API_KEY,
+  });
+  const res = await fetch(
+    `https://maps.googleapis.com/maps/api/place/autocomplete/json?${params}`,
+  );
+  const data = (await res.json()) as {
+    status: string;
+    predictions?: { place_id: string }[];
+    error_message?: string;
+  };
+
+  if (data.status !== 'OK' && data.status !== 'ZERO_RESULTS') {
+    return searchCitiesByText(query);
+  }
+
+  const predictions = data.predictions ?? [];
+  if (predictions.length === 0) {
+    return searchCitiesByText(query);
+  }
+
+  const mapped = await Promise.all(
+    predictions.slice(0, 6).map((p) => fetchCityDetails(p.place_id)),
+  );
+  const unique = new Map<string, CitySearchResult>();
+  mapped.forEach((item) => {
+    if (item && !unique.has(item.googlePlaceId)) {
+      unique.set(item.googlePlaceId, item);
+    }
+  });
+  return [...unique.values()];
 };
 
 // 2026-09-01 여행지 근처 병원·의원 (거리순)

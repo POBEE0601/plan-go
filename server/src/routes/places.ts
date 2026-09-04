@@ -4,7 +4,7 @@ import { Router } from 'express';
 import { authMiddleware } from '../middleware/auth.js';
 import { rateLimit } from '../middleware/rateLimit.js';
 import { getRouteDetails, getTransitSummary } from '../services/googleDirections.js';
-import { getPlaceDetails, searchNearbyHospitals, searchPlaces } from '../services/googlePlaces.js';
+import { getPlaceDetails, searchNearbyHospitals, searchPlaces, searchCities } from '../services/googlePlaces.js';
 
 const router = Router();
 router.use(authMiddleware);
@@ -26,6 +26,24 @@ router.get('/search', async (req, res) => {
   } catch (err) {
     const message =
       err instanceof Error ? err.message : '장소 검색에 실패했습니다.';
+    res.status(502).json({ message });
+  }
+});
+
+// 일정 생성용: 국가·도시만 검색
+router.get('/cities', async (req, res) => {
+  const query = String(req.query.q ?? '').trim();
+  if (!query) {
+    res.status(400).json({ message: '검색어(q)가 필요합니다.' });
+    return;
+  }
+
+  try {
+    const results = await searchCities(query);
+    res.json(results);
+  } catch (err) {
+    const message =
+      err instanceof Error ? err.message : '도시 검색에 실패했습니다.';
     res.status(502).json({ message });
   }
 });

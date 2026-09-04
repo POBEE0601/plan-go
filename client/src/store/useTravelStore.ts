@@ -5,6 +5,7 @@ import type {
   MemberRole,
   Place,
   PlaceSearchResult,
+  PrepItem,
   TravelPlan,
 } from '../types/travel';
 import { travelApi } from '../utils/api';
@@ -33,7 +34,7 @@ interface TravelStore {
   deleteTravelPlan: (id: string) => Promise<void>;
   refreshSelectedPlan: () => Promise<void>;
 
-  addPlaceFromSearch: (result: PlaceSearchResult) => Promise<void>;
+  addPlaceFromSearch: (result: PlaceSearchResult) => Promise<Place | void>;
   deletePlace: (placeId: string) => Promise<void>;
   assignToDay: (placeId: string, dayIndex: number) => Promise<void>;
   moveAssignment: (
@@ -59,6 +60,12 @@ interface TravelStore {
     role: 'editor' | 'viewer',
   ) => Promise<void>;
   removeMember: (memberId: string) => Promise<void>;
+
+  updatePrepMemo: (memo: string) => Promise<void>;
+  addPrepItem: (label: string) => Promise<PrepItem | void>;
+  togglePrepItem: (itemId: string, checked: boolean) => Promise<void>;
+  updatePrepItemDetail: (itemId: string, detail: string) => Promise<void>;
+  deletePrepItem: (itemId: string) => Promise<void>;
 
   setMapCenter: (lat: number, lng: number, zoom?: number) => void;
   setSelectedMapPlace: (place: PlaceSearchResult | Place | null) => void;
@@ -194,6 +201,7 @@ export const useTravelStore = create<TravelStore>((set, get) => ({
     if (id) await get().selectPlan(id);
   },
 
+  // 2026-09-04 검색 추가 후 일차 배정을 위해 생성된 Place 반환
   addPlaceFromSearch: async (result) => {
     const plan = get().selectedPlan;
     if (!plan || !canWriteRole(get().myRole)) {
@@ -228,6 +236,7 @@ export const useTravelStore = create<TravelStore>((set, get) => ({
             : p,
         ),
       }));
+      return place;
     } catch (err) {
       set({
         error:
@@ -405,6 +414,115 @@ export const useTravelStore = create<TravelStore>((set, get) => ({
     if (!plan) return;
     await travelApi.removeMember(plan.id, memberId);
     await get().refreshSelectedPlan();
+  },
+
+  // 2026-09-04 여행 준비 메모·체크리스트
+  updatePrepMemo: async (memo) => {
+    const plan = get().selectedPlan;
+    if (!plan || !canWriteRole(get().myRole)) return;
+    const saved = await travelApi.updatePrepMemo(plan.id, memo);
+    const patch = { prepMemo: saved.memo };
+    set((state) => ({
+      selectedPlan: state.selectedPlan
+        ? { ...state.selectedPlan, ...patch }
+        : null,
+      travelPlans: state.travelPlans.map((p) =>
+        p.id === plan.id ? { ...p, ...patch } : p,
+      ),
+    }));
+  },
+
+  addPrepItem: async (label) => {
+    const plan = get().selectedPlan;
+    if (!plan || !canWriteRole(get().myRole)) return;
+    try {
+      const item = await travelApi.addPrepItem(plan.id, label);
+      set((state) => ({
+        selectedPlan: state.selectedPlan
+          ? {
+              ...state.selectedPlan,
+              prepItems: [...(state.selectedPlan.prepItems ?? []), item],
+            }
+          : null,
+      }));
+      return item;
+    } catch (err) {
+      set({
+        error:
+          err instanceof Error ? err.message : '항목 추가에 실패했습니다.',
+      });
+    }
+  },
+
+  togglePrepItem: async (itemId, checked) => {
+    const plan = get().selectedPlan;
+    if (!plan || !canWriteRole(get().myRole)) return;
+    const prev = plan.prepItems ?? [];
+    set((state) => ({
+      selectedPlan: state.selectedPlan
+        ? {
+            ...state.selectedPlan,
+            prepItems: (state.selectedPlan.prepItems ?? []).map((p) =>
+              p.id === itemId ? { ...p, checked } : p,
+            ),
+          }
+        : null,
+    }));
+    try {
+      const updated = await travelApi.updatePrepItem(plan.id, itemId, {
+        checked,
+      });
+      set((state) => ({
+        selectedPlan: state.selectedPlan
+          ? {
+              ...state.selectedPlan,
+              prepItems: (state.selectedPlan.prepItems ?? []).map((p) =>
+                p.id === updated.id ? updated : p,
+              ),
+            }
+          : null,
+      }));
+    } catch (err) {
+      set((state) => ({
+        selectedPlan: state.selectedPlan
+          ? { ...state.selectedPlan, prepItems: prev }
+          : null,
+        error:
+          err instanceof Error ? err.message : '체크리스트 수정에 실패했습니다.',
+      }));
+    }
+  },
+
+  updatePrepItemDetail: async (itemId, detail) => {
+    const plan = get().selectedPlan;
+    if (!plan || !canWriteRole(get().myRole)) return;
+    const updated = await travelApi.updatePrepItem(plan.id, itemId, { detail });
+    set((state) => ({
+      selectedPlan: state.selectedPlan
+        ? {
+            ...state.selectedPlan,
+            prepItems: (state.selectedPlan.prepItems ?? []).map((p) =>
+              p.id === updated.id ? updated : p,
+            ),
+          }
+        : null,
+    }));
+  },
+
+  deletePrepItem: async (itemId) => {
+    const plan = get().selectedPlan;
+    if (!plan || !canWriteRole(get().myRole)) return;
+    await travelApi.deletePrepItem(plan.id, itemId);
+    set((state) => ({
+      selectedPlan: state.selectedPlan
+        ? {
+            ...state.selectedPlan,
+            prepItems: (state.selectedPlan.prepItems ?? []).filter(
+              (p) => p.id !== itemId,
+            ),
+          }
+        : null,
+    }));
   },
 
   setMapCenter: (lat, lng, zoom) =>
