@@ -1,11 +1,11 @@
 // 2026-09-01 모바일 헤더: 햄버거 메뉴·여행 목록 버튼·컴팩트 액션
 // 2026-09-04 다크/라이트 전환 버튼
+// 2026-09-07 헤더에 첨부 공식 로고 PNG 적용
 import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
   LogIn,
   LogOut,
-  MapPin,
   Megaphone,
   Menu,
   MessageSquareText,
@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import { useAuthStore } from '../store/useAuthStore';
 import { useTravelStore } from '../store/useTravelStore';
+import BrandLogo from './BrandLogo';
 import ThemeToggle from './ThemeToggle';
 
 interface HeaderProps {
@@ -54,7 +55,7 @@ export default function Header({
   const closeNav = () => setNavOpen(false);
 
   return (
-    <header className="safe-top relative z-30 shrink-0 border-b border-slate-200 bg-white px-3 py-2.5 shadow-sm sm:px-6 sm:py-4">
+    <header className="safe-top relative z-30 shrink-0 border-b border-slate-200 bg-white px-3 py-2 sm:px-6 sm:py-3">
       <div className="flex items-center justify-between gap-2">
         <div className="flex min-w-0 items-center gap-2 sm:gap-6">
           {onOpenPlans && (
@@ -70,19 +71,10 @@ export default function Header({
 
           <Link
             to={isAuthenticated ? '/dashboard' : '/'}
-            className="flex min-w-0 items-center gap-2 sm:gap-3"
+            className="flex min-w-0 items-center"
+            aria-label="plan-go 홈"
           >
-            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary-600 text-white sm:h-10 sm:w-10">
-              <MapPin className="h-5 w-5" />
-            </div>
-            <div className="min-w-0">
-              <h1 className="text-lg font-bold tracking-tight text-slate-900 sm:text-xl">
-                plan-go
-              </h1>
-              <p className="hidden text-sm text-slate-500 sm:block">
-                Plan Together, Record Forever
-              </p>
-            </div>
+            <BrandLogo titleAs="h1" />
           </Link>
 
           <nav className="hidden items-center gap-1 lg:flex">

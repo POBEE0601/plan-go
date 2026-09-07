@@ -1,7 +1,9 @@
 // 2026-09-01 모바일 여백 조정
+// 2026-09-07 공식 로고 컴포넌트 적용
 import { useState } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
-import { AlertCircle, Loader2, LogIn, MapPin } from 'lucide-react';
+import { AlertCircle, Loader2, LogIn } from 'lucide-react';
+import BrandLogo from '../components/BrandLogo';
 import { useAuthStore } from '../store/useAuthStore';
 
 export default function LoginPage() {
@@ -33,11 +35,12 @@ export default function LoginPage() {
     <div className="flex min-h-dvh items-center justify-center bg-gradient-to-b from-primary-50 to-slate-50 px-4">
       <div className="w-full max-w-md">
         <div className="mb-8 text-center">
-          <Link to="/" className="inline-flex items-center gap-2">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary-600 text-white">
-              <MapPin className="h-5 w-5" />
-            </div>
-            <span className="text-xl font-bold text-slate-900">plan-go</span>
+          <Link
+            to="/"
+            className="inline-flex justify-center"
+            aria-label="plan-go 홈"
+          >
+            <BrandLogo size="lg" />
           </Link>
           <p className="mt-2 text-sm text-slate-500">계정에 로그인하세요</p>
         </div>

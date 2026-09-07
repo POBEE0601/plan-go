@@ -1,6 +1,6 @@
-# ✈️ Plan-Go: 실시간 협업 여행 플래너
+# <img src="client/public/logo.png" alt="plan-go" height="48" />
 
-> **1인 개발 프로젝트** | **웹 & 앱 확장형 아키텍처**
+> **실시간 협업 여행 플래너** | **웹 & 앱 확장형 아키텍처**
 > "Plan Together, Record Forever" (함께 계획하고 영원히 기록하다)
 
 ---

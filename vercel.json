@@ -13,7 +13,7 @@
       "destination": "https://plan-go-api.onrender.com/uploads/:path*"
     },
     {
-      "source": "/((?!api/|uploads/).*)",
+      "source": "/((?!api/|uploads/|favicon|logo|apple-touch-icon\\.png|icon-512\\.png|og-image\\.png|site\\.webmanifest).*)",
       "destination": "/index.html"
     }
   ],

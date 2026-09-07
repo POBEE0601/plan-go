@@ -1,8 +1,10 @@
 // 2026-09-01 모바일 여백 조정
 // 2026-08-31 초대 수락 페이지
+// 2026-09-07 공식 로고 컴포넌트 적용
 import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { AlertCircle, Loader2, MapPin, UserPlus } from 'lucide-react';
+import { AlertCircle, Loader2, UserPlus } from 'lucide-react';
+import BrandLogo from '../components/BrandLogo';
 import { useAuthStore } from '../store/useAuthStore';
 import { travelApi } from '../utils/api';
 import type { InvitePreview } from '../types/travel';
@@ -56,11 +58,12 @@ export default function InvitePage() {
   return (
     <div className="flex min-h-dvh items-center justify-center bg-gradient-to-b from-primary-50 to-slate-50 px-4">
       <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-8">
-        <Link to="/" className="mb-6 inline-flex items-center gap-2">
-          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary-600 text-white">
-            <MapPin className="h-4 w-4" />
-          </div>
-          <span className="font-bold text-slate-900">plan-go</span>
+        <Link
+          to="/"
+          className="mb-6 inline-flex items-center"
+          aria-label="plan-go 홈"
+        >
+          <BrandLogo size="md" />
         </Link>
 
         <h1 className="mb-2 flex items-center gap-2 text-xl font-bold text-slate-800">

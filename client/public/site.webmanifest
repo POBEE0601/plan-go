@@ -1,0 +1,26 @@
+{
+  "name": "plan-go",
+  "short_name": "plan-go",
+  "description": "함께 계획하고, 영원히 기록하는 여행",
+  "icons": [
+    {
+      "src": "/favicon-32x32.png",
+      "sizes": "32x32",
+      "type": "image/png"
+    },
+    {
+      "src": "/apple-touch-icon.png",
+      "sizes": "180x180",
+      "type": "image/png"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ],
+  "theme_color": "#2563eb",
+  "background_color": "#000000",
+  "display": "standalone",
+  "start_url": "/"
+}

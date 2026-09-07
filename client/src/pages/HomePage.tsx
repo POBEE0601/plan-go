@@ -1,17 +1,18 @@
 // 2026-09-01 랜딩 모바일 네비게이션
 // 2026-09-04 로그아웃 후에도 다크 테마가 메인 전면에 맞게 유지
+// 2026-09-07 공식 로고 컴포넌트 적용
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   Calendar,
   Globe,
   LogIn,
-  MapPin,
   Menu,
   UserPlus,
   Users,
   X,
 } from 'lucide-react';
+import BrandLogo from '../components/BrandLogo';
 import ThemeToggle from '../components/ThemeToggle';
 
 export default function HomePage() {
@@ -21,11 +22,8 @@ export default function HomePage() {
     <div className="min-h-dvh bg-gradient-to-b from-primary-50 via-white to-slate-50">
       <nav className="border-b border-slate-200/60 bg-white/80 backdrop-blur">
         <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3 sm:px-6 sm:py-4">
-          <Link to="/" className="flex items-center gap-2">
-            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary-600 text-white">
-              <MapPin className="h-4 w-4" />
-            </div>
-            <span className="text-lg font-bold text-slate-900">plan-go</span>
+          <Link to="/" className="flex min-w-0 items-center" aria-label="plan-go 홈">
+            <BrandLogo size="md" />
           </Link>
           <div className="hidden items-center gap-3 sm:flex">
             <ThemeToggle compact />
