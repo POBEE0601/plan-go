@@ -1,3 +1,4 @@
+// 2026-09-07 장소 상세 시트가 메모 영역을 채우도록
 // 2026-09-03 밀도 타임라인 + 지도 캔버스 + 풀 슬라이드오버 + 모바일 시트
 // 2026-09-04 모바일 타임라인 행 터치 영역 확대
 // 2026-09-04 모바일 시트 높이·스크롤 수정 (마지막 장소가 잘리지 않게)
@@ -717,7 +718,7 @@ export default function PlacePoolBoard({ canWrite }: PlacePoolBoardProps) {
               <>
                 <TimelineChrome canWrite={canWrite} placesById={placesById} />
                 {inspectorOpen && sheetSnap === 'full' ? (
-                  <div className="min-h-0 flex-1 overflow-y-auto">
+                  <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
                     {sheetInspector}
                   </div>
                 ) : (

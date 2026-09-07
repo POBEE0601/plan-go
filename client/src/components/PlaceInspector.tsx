@@ -1,8 +1,13 @@
+// 2026-09-07 모바일 메모 버튼이 시트 하단에 잘리지 않도록
+// 2026-09-07 모바일 인라인 메모·PC 팝업 메모
 // 2026-09-04 일차 이동을 DayMoveControl로 통일
 // 2026-09-03 선택 장소 상세 인스펙터 (목록 카드에서 이관)
-import { Clock, MapPin, Star, X } from 'lucide-react';
+import { useState } from 'react';
+import { Clock, MapPin, Star, StickyNote, X } from 'lucide-react';
 import NearbyHospitalButton from './NearbyHospitalButton';
 import DayMoveControl from './DayMoveControl';
+import AssignmentMemoInline from './AssignmentMemoInline';
+import AssignmentMemoModal from './AssignmentMemoModal';
 import { useTravelStore } from '../store/useTravelStore';
 import { usePlanUiStore } from '../store/usePlanUiStore';
 import { briefTypeLabels } from '../utils/placeBrief';
@@ -28,8 +33,10 @@ export default function PlaceInspector({
 }: PlaceInspectorProps) {
   const { moveAssignment, removeFromDay } = useTravelStore();
   const setActiveDay = usePlanUiStore((s) => s.setActiveDay);
-  const memo = assignment.memo || place.memo;
+  const [memoOpen, setMemoOpen] = useState(false);
+  const memo = assignment.memo;
   const typeLabels = briefTypeLabels(place.types);
+  const isSheet = variant === 'sheet';
 
   const handleRemove = async () => {
     await removeFromDay(assignment.id);
@@ -38,13 +45,13 @@ export default function PlaceInspector({
 
   return (
     <div
-      className={`relative overflow-hidden bg-white ${
-        variant === 'float'
-          ? 'rounded-xl border border-slate-200 shadow-lg'
-          : 'rounded-t-xl'
+      className={`relative flex flex-col bg-white ${
+        isSheet
+          ? 'h-full min-h-0 flex-1 overflow-hidden rounded-t-xl'
+          : 'overflow-hidden rounded-xl border border-slate-200 shadow-lg'
       }`}
     >
-      <div className="flex items-start gap-3 p-3">
+      <div className="flex shrink-0 items-start gap-3 p-3">
         {place.photoUrl && (
           <img
             src={place.photoUrl}
@@ -95,21 +102,16 @@ export default function PlaceInspector({
         </button>
       </div>
 
-      {(assignment.time || memo) && (
-        <div className="space-y-1 border-t border-slate-100 px-3 py-2">
-          {assignment.time && (
-            <p className="flex items-center gap-1 text-[12px] text-slate-600">
-              <Clock className="h-3.5 w-3.5" />
-              {assignment.time}
-            </p>
-          )}
-          {memo && (
-            <p className="text-[12px] leading-snug text-slate-600">{memo}</p>
-          )}
+      {assignment.time && (
+        <div className="shrink-0 border-t border-slate-100 px-3 py-2">
+          <p className="flex items-center gap-1 text-[12px] text-slate-600">
+            <Clock className="h-3.5 w-3.5" />
+            {assignment.time}
+          </p>
         </div>
       )}
 
-      <div className="flex flex-wrap items-center gap-2 border-t border-slate-100 px-3 py-2">
+      <div className="flex shrink-0 flex-wrap items-center gap-2 border-t border-slate-100 px-3 py-2">
         {canWrite && dayCount > 1 && (
           <div className="min-w-0 flex-1">
             <DayMoveControl
@@ -132,6 +134,20 @@ export default function PlaceInspector({
             일정에서 제거
           </button>
         )}
+        {!isSheet && (
+          <button
+            type="button"
+            onClick={() => setMemoOpen(true)}
+            className={`inline-flex items-center gap-1 rounded-md px-2 py-1 text-[12px] font-medium ${
+              memo
+                ? 'bg-primary-50 text-primary-700'
+                : 'text-slate-600 hover:bg-slate-50'
+            }`}
+          >
+            <StickyNote className="h-3.5 w-3.5" />
+            메모
+          </button>
+        )}
         <div className="relative ml-auto h-8 min-w-[6.5rem]">
           <NearbyHospitalButton
             lat={place.lat}
@@ -140,6 +156,25 @@ export default function PlaceInspector({
           />
         </div>
       </div>
+
+      {isSheet && (
+        <AssignmentMemoInline
+          assignmentId={assignment.id}
+          memo={memo}
+          canWrite={canWrite}
+        />
+      )}
+
+      {!isSheet && (
+        <AssignmentMemoModal
+          open={memoOpen}
+          assignmentId={assignment.id}
+          placeName={place.name}
+          memo={memo}
+          canWrite={canWrite}
+          onClose={() => setMemoOpen(false)}
+        />
+      )}
     </div>
   );
 }

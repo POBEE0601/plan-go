@@ -1,3 +1,4 @@
+// 2026-09-07 일차 카드 우측 메모 버튼
 // 2026-09-04 장기간 여행: 전 일차 버튼 그리드 → 어제/내일+드롭다운
 // 2026-09-01 장소 풀 기본 접힘
 // 2026-09-01 장소 카드 우측 하단 가까운 병원
@@ -54,6 +55,7 @@ import TransitHint from './TransitHint';
 import DayTimelineMap from './DayTimelineMap';
 import NearbyHospitalButton from './NearbyHospitalButton';
 import DayMoveControl from './DayMoveControl';
+import { AssignmentMemoButton } from './AssignmentMemoModal';
 
 interface PlacePoolBoardProps {
   canWrite: boolean;
@@ -72,7 +74,6 @@ function PlaceCardContent({
 }) {
   const isDayCard = pin != null;
   const typeLabels = isDayCard ? briefTypeLabels(place.types) : [];
-  const memo = assignment?.memo || place.memo;
 
   return (
     <div className="flex min-w-0 flex-1 items-start gap-2">
@@ -133,9 +134,6 @@ function PlaceCardContent({
             <Clock className="h-3 w-3" />
             {assignment.time}
           </p>
-        )}
-        {!compact && isDayCard && memo && (
-          <p className="mt-1 line-clamp-2 text-[11px] text-slate-500">{memo}</p>
         )}
       </div>
     </div>
@@ -203,6 +201,12 @@ function SortableAssignment({
             assignment={assignment}
           />
         </button>
+        <AssignmentMemoButton
+          assignmentId={assignment.id}
+          placeName={place.name}
+          memo={assignment.memo}
+          canWrite={canWrite}
+        />
         {canWrite && (
           <button
             type="button"

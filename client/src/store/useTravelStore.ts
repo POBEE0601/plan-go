@@ -1,3 +1,4 @@
+// 2026-09-07 일정 장소 메모 저장
 // 2026-09-04 초대 멤버 일정 나가기
 // 2026-08-31 Place·Day·초대 연동 Zustand 스토어
 import { create } from 'zustand';
@@ -44,6 +45,8 @@ interface TravelStore {
     dayIndex: number,
     order?: number,
   ) => Promise<void>;
+  // 일정 장소당 메모 1개만 유지 (빈 문자열이면 삭제)
+  updateAssignmentMemo: (assignmentId: string, memo: string) => Promise<void>;
   removeFromDay: (assignmentId: string) => Promise<void>;
   reorderDayAssignments: (
     dayIndex: number,
@@ -347,6 +350,34 @@ export const useTravelStore = create<TravelStore>((set, get) => ({
         error:
           err instanceof Error ? err.message : '일정 이동에 실패했습니다.',
       });
+    }
+  },
+
+  updateAssignmentMemo: async (assignmentId, memo) => {
+    const plan = get().selectedPlan;
+    if (!plan || !canWriteRole(get().myRole)) return;
+    try {
+      const nextMemo = memo.slice(0, 2000);
+      const updated = await travelApi.updateAssignment(plan.id, assignmentId, {
+        memo: nextMemo,
+      });
+      set((state) => ({
+        selectedPlan: state.selectedPlan
+          ? {
+              ...state.selectedPlan,
+              dayAssignments: state.selectedPlan.dayAssignments.map((d) =>
+                d.id === assignmentId ? updated : d,
+              ),
+            }
+          : null,
+        error: null,
+      }));
+    } catch (err) {
+      set({
+        error:
+          err instanceof Error ? err.message : '메모 저장에 실패했습니다.',
+      });
+      throw err;
     }
   },
 
