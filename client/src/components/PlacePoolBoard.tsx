@@ -1,3 +1,4 @@
+// 2026-09-14 모바일 지도 전체 보기: 검색바·목록 숨김
 // 2026-09-07 장소 상세 시트가 메모 영역을 채우도록
 // 2026-09-03 밀도 타임라인 + 지도 캔버스 + 풀 슬라이드오버 + 모바일 시트
 // 2026-09-04 모바일 타임라인 행 터치 영역 확대
@@ -23,8 +24,11 @@ import { CSS } from '@dnd-kit/utilities';
 import { Fragment, useEffect, useMemo, useState } from 'react';
 import {
   GripVertical,
+  List,
   MapPin,
+  Maximize2,
   Plus,
+  Search,
   Trash2,
   X,
 } from 'lucide-react';
@@ -414,9 +418,11 @@ function PoolPanel({ canWrite }: { canWrite: boolean }) {
 function TimelineChrome({
   canWrite,
   placesById,
+  onMapFocus,
 }: {
   canWrite: boolean;
   placesById: Record<string, Place>;
+  onMapFocus?: () => void;
 }) {
   const selectedPlan = useTravelStore((s) => s.selectedPlan);
   const { activeDay, poolOpen, togglePool } = usePlanUiStore();
@@ -435,6 +441,17 @@ function TimelineChrome({
           {dayDrivingSummary(assignments, placesById)}
         </span>
       </p>
+      {onMapFocus && (
+        <button
+          type="button"
+          onClick={onMapFocus}
+          className="inline-flex shrink-0 items-center gap-1 rounded-lg bg-primary-600 px-2 py-1 text-[11px] font-medium text-white hover:bg-primary-700"
+          aria-label="지도 전체 보기"
+        >
+          <Maximize2 className="h-3.5 w-3.5" />
+          지도
+        </button>
+      )}
       <button
         type="button"
         onClick={togglePool}
@@ -468,11 +485,16 @@ export default function PlacePoolBoard({ canWrite }: PlacePoolBoardProps) {
     inspectorOpen,
     closeInspector,
     poolOpen,
+    setPoolOpen,
     sheetSnap,
     setSheetSnap,
   } = usePlanUiStore();
 
   const [activeId, setActiveId] = useState<string | null>(null);
+  // 지도 전체 보기 중 검색바만 따로 다시 열기
+  const [mapFocusSearch, setMapFocusSearch] = useState(false);
+  // DevTools 모바일·주소창 때문에 레이아웃보다 시각 뷰포트가 짧을 때 하단 여백
+  const [mapDockBottom, setMapDockBottom] = useState(24);
   const [isDesktop, setIsDesktop] = useState(
     () => window.matchMedia('(min-width: 1024px)').matches,
   );
@@ -482,6 +504,30 @@ export default function PlacePoolBoard({ canWrite }: PlacePoolBoardProps) {
     const onChange = () => setIsDesktop(mq.matches);
     mq.addEventListener('change', onChange);
     return () => mq.removeEventListener('change', onChange);
+  }, []);
+
+  useEffect(() => {
+    if (sheetSnap !== 'collapsed') setMapFocusSearch(false);
+  }, [sheetSnap]);
+
+  useEffect(() => {
+    const updateDockBottom = () => {
+      const vv = window.visualViewport;
+      const clipped = vv
+        ? Math.max(0, window.innerHeight - vv.height - vv.offsetTop)
+        : 0;
+      setMapDockBottom(Math.max(24, clipped + 16));
+    };
+    updateDockBottom();
+    const vv = window.visualViewport;
+    vv?.addEventListener('resize', updateDockBottom);
+    vv?.addEventListener('scroll', updateDockBottom);
+    window.addEventListener('resize', updateDockBottom);
+    return () => {
+      vv?.removeEventListener('resize', updateDockBottom);
+      vv?.removeEventListener('scroll', updateDockBottom);
+      window.removeEventListener('resize', updateDockBottom);
+    };
   }, []);
 
   const sensors = useSensors(
@@ -528,7 +574,11 @@ export default function PlacePoolBoard({ canWrite }: PlacePoolBoardProps) {
 
   const onSelectMapPlace = (placeId: string) => {
     const assignment = assignments.find((a) => a.placeId === placeId);
-    if (assignment) selectAssignment(assignment.id);
+    if (!assignment) return;
+    // 지도 전체 보기 중에는 시트를 펼치지 않고 핀만 강조
+    selectAssignment(assignment.id, {
+      keepSheet: !isDesktop && sheetSnap === 'collapsed',
+    });
   };
 
   if (!selectedPlan) return null;
@@ -613,10 +663,24 @@ export default function PlacePoolBoard({ canWrite }: PlacePoolBoardProps) {
     return a ? (placesById[a.placeId] ?? null) : null;
   })();
 
-  // 2026-09-04 접힘 → 반열림 → 전체 → 반열림. 핸들로 목록을 더 펼 수 있게
+  const mapFocus = !isDesktop && sheetSnap === 'collapsed';
+
+  const enterMapFocus = () => {
+    closeInspector();
+    setPoolOpen(false);
+    setMapFocusSearch(false);
+    setSheetSnap('collapsed');
+  };
+
+  const exitMapFocusToList = () => {
+    setMapFocusSearch(false);
+    setSheetSnap('half');
+  };
+
+  // 2026-09-14 접힘(지도 전체) → 반열림 → 전체 → 반열림
   const onGrabber = () => {
     if (sheetSnap === 'collapsed') {
-      setSheetSnap('half');
+      exitMapFocusToList();
       return;
     }
     if (sheetSnap === 'half') {
@@ -628,12 +692,7 @@ export default function PlacePoolBoard({ canWrite }: PlacePoolBoardProps) {
   };
 
   // 지도 영역 대비 비율이라 DevTools·실기기 모두 같은 비율로 보임
-  const sheetHeight =
-    sheetSnap === 'collapsed'
-      ? 'h-16'
-      : sheetSnap === 'full'
-        ? 'h-[88%]'
-        : 'h-[62%]';
+  const sheetHeight = sheetSnap === 'full' ? 'h-[88%]' : 'h-[62%]';
 
   const inspector = selectedAssignment && selectedPlace && (
     <PlaceInspector
@@ -686,10 +745,59 @@ export default function PlacePoolBoard({ canWrite }: PlacePoolBoardProps) {
               places={orderedPlaces}
               focusPlaceId={focusPlaceId}
               onSelectPlace={onSelectMapPlace}
+              layoutKey={`${isDesktop ? 'desk' : 'mob'}-${sheetSnap}-${mapFocusSearch ? 's' : 'n'}`}
             />
-            <div className="pointer-events-none absolute inset-x-0 top-0 z-10 p-3">
-              <PlaceSearchBar canWrite={canWrite} />
-            </div>
+            {(!mapFocus || mapFocusSearch) && (
+              <div className="pointer-events-none absolute inset-x-0 top-0 z-10 p-3">
+                <div className="flex items-start gap-2">
+                  <div className="min-w-0 flex-1">
+                    <PlaceSearchBar canWrite={canWrite} />
+                  </div>
+                  {!isDesktop && !mapFocus && (
+                    <button
+                      type="button"
+                      onClick={enterMapFocus}
+                      className="pointer-events-auto flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white/95 text-slate-700 shadow-sm"
+                      aria-label="지도 전체 보기"
+                      title="지도 전체 보기"
+                    >
+                      <Maximize2 className="h-5 w-5" />
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
+            {mapFocus && (
+              <div
+                className="pointer-events-none absolute inset-x-0 z-20 flex justify-center px-3"
+                style={{
+                  bottom: `calc(${mapDockBottom}px + env(safe-area-inset-bottom, 0px))`,
+                }}
+              >
+                <div className="pointer-events-auto flex items-center gap-1 rounded-full border border-slate-200 bg-white/95 p-1 shadow-lg">
+                  <button
+                    type="button"
+                    onClick={exitMapFocusToList}
+                    className="inline-flex items-center gap-1.5 rounded-full px-3.5 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100"
+                  >
+                    <List className="h-4 w-4" />
+                    목록
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setMapFocusSearch((v) => !v)}
+                    className={`inline-flex items-center gap-1.5 rounded-full px-3.5 py-2 text-sm font-medium ${
+                      mapFocusSearch
+                        ? 'bg-primary-600 text-white'
+                        : 'text-slate-700 hover:bg-slate-100'
+                    }`}
+                  >
+                    <Search className="h-4 w-4" />
+                    검색
+                  </button>
+                </div>
+              </div>
+            )}
             {isDesktop && inspectorOpen && inspector && (
               <div className="absolute bottom-3 right-3 z-20 w-80">
                 {inspector}
@@ -697,7 +805,7 @@ export default function PlacePoolBoard({ canWrite }: PlacePoolBoardProps) {
             )}
           </div>
 
-          {!isDesktop && (
+          {!isDesktop && !mapFocus && (
           <div
             className={`absolute inset-x-0 bottom-0 z-20 flex flex-col overflow-hidden rounded-t-2xl border-t border-slate-200 bg-white shadow-[0_-8px_24px_rgba(15,23,42,0.12)] ${sheetHeight}`}
           >
@@ -708,30 +816,25 @@ export default function PlacePoolBoard({ canWrite }: PlacePoolBoardProps) {
               aria-label="일정 시트 접기/펼치기"
             >
               <span className="h-1 w-10 rounded-full bg-slate-300" />
-              {sheetSnap === 'collapsed' && (
-                <p className="mt-1 text-xs text-slate-500">
-                  {activeDay}일차 · {dayDrivingSummary(assignments, placesById)}
-                </p>
-              )}
             </button>
-            {sheetSnap !== 'collapsed' && (
-              <>
-                <TimelineChrome canWrite={canWrite} placesById={placesById} />
-                {inspectorOpen && sheetSnap === 'full' ? (
-                  <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-                    {sheetInspector}
-                  </div>
-                ) : (
-                  <CompactTimeline
-                    dayIndex={activeDay}
-                    assignments={assignments}
-                    placesById={placesById}
-                    canWrite={canWrite}
-                  />
-                )}
-                {poolOpen && <PoolPanel canWrite={canWrite} />}
-              </>
+            <TimelineChrome
+              canWrite={canWrite}
+              placesById={placesById}
+              onMapFocus={enterMapFocus}
+            />
+            {inspectorOpen && sheetSnap === 'full' ? (
+              <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+                {sheetInspector}
+              </div>
+            ) : (
+              <CompactTimeline
+                dayIndex={activeDay}
+                assignments={assignments}
+                placesById={placesById}
+                canWrite={canWrite}
+              />
             )}
+            {poolOpen && <PoolPanel canWrite={canWrite} />}
           </div>
           )}
         </div>

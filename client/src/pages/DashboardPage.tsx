@@ -1,3 +1,4 @@
+// 2026-09-14 모바일 셸 높이를 svh로 맞춰 하단 버튼이 잘리지 않게
 // 2026-09-01 대시보드: 여행지 환율 표시
 // 2026-09-01 일자 아코디언·단일 작업영역
 // 2026-09-01 대시보드: 모바일 여행 목록 드로어 + 지도 오버레이
@@ -82,7 +83,7 @@ export default function DashboardPage() {
   }, [plansOpen]);
 
   return (
-    <div className="flex h-dvh min-h-0 flex-col overflow-hidden">
+    <div className="flex h-svh min-h-0 flex-col overflow-hidden">
       <Header
         onInvite={isOwner ? () => setInviteOpen(true) : undefined}
         onOpenPlans={() => setPlansOpen(true)}

@@ -1,3 +1,5 @@
+// 2026-09-14 모바일 카메라 컨트롤 숨김 (목록/검색 바와 겹침 방지)
+// 2026-09-14 시트 접힘 시 지도 리사이즈·bounds 재맞춤
 // 2026-09-01 차량 경로 1회만 조회 (TransitHint와 캐시·inflight 공유)
 // 2026-09-01 일차 타임라인 지도: 번호 핀 + 실제 도로 경로
 // 2026-09-03 워크스페이스 캔버스: 검색 마커·빈 날에도 지도 유지
@@ -19,6 +21,8 @@ interface DayTimelineMapProps {
   focusPlaceId?: string | null;
   onSelectPlace?: (placeId: string) => void;
   showHeader?: boolean;
+  // 시트·검색바 토글처럼 컨테이너 크기가 바뀔 때 리사이즈 트리거
+  layoutKey?: string;
 }
 
 const mapContainerStyle = { width: '100%', height: '100%' };
@@ -28,6 +32,7 @@ export default function DayTimelineMap({
   focusPlaceId,
   onSelectPlace,
   showHeader = false,
+  layoutKey,
 }: DayTimelineMapProps) {
   const { isLoaded, loadError } = useGoogleMaps();
   const searchResults = useMapUiStore((s) => s.searchResults);
@@ -120,6 +125,12 @@ export default function DayTimelineMap({
 
   useEffect(() => {
     const map = mapRef.current;
+    if (!map || !mapReady || !isLoaded || layoutKey == null) return;
+    google.maps.event.trigger(map, 'resize');
+  }, [layoutKey, isLoaded, mapReady]);
+
+  useEffect(() => {
+    const map = mapRef.current;
     if (!map || !focusPlaceId) return;
     const place = places.find((p) => p.id === focusPlaceId);
     if (!place) return;
@@ -172,6 +183,9 @@ export default function DayTimelineMap({
             streetViewControl: false,
             mapTypeControl: false,
             fullscreenControl: false,
+            rotateControl: false,
+            scaleControl: false,
+            cameraControl: false,
             zoomControl: true,
             zoomControlOptions: isLoaded
               ? { position: google.maps.ControlPosition.RIGHT_TOP }
