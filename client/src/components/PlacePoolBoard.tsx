@@ -1,3 +1,4 @@
+// 2026-09-15 일차 헤더 차량 합산 시간 제거
 // 2026-09-14 모바일 지도 전체 보기: 검색바·목록 숨김
 // 2026-09-07 장소 상세 시트가 메모 영역을 채우도록
 // 2026-09-03 밀도 타임라인 + 지도 캔버스 + 풀 슬라이드오버 + 모바일 시트
@@ -42,7 +43,6 @@ import {
   getDateForDay,
   getDayCount,
 } from '../utils/days';
-import { getCachedRoute } from '../utils/jsDirections';
 import type { DayAssignment, Place, PlaceCategory } from '../types/travel';
 import TransitHint from './TransitHint';
 import DayTimelineMap from './DayTimelineMap';
@@ -54,33 +54,7 @@ interface PlacePoolBoardProps {
   canWrite: boolean;
 }
 
-function formatDuration(sec: number): string {
-  const h = Math.floor(sec / 3600);
-  const m = Math.round((sec % 3600) / 60);
-  if (h <= 0) return `약 ${Math.max(1, m)}분`;
-  if (m === 0) return `약 ${h}시간`;
-  return `약 ${h}시간 ${m}분`;
-}
-
-function dayDrivingSummary(
-  assignments: DayAssignment[],
-  placesById: Record<string, Place>,
-): string {
-  const places = assignments
-    .map((a) => placesById[a.placeId])
-    .filter((p): p is Place => Boolean(p));
-  let total = 0;
-  let has = false;
-  for (let i = 1; i < places.length; i += 1) {
-    const cached = getCachedRoute(places[i - 1], places[i], 'driving');
-    if (cached.found && cached.value) {
-      total += cached.value.durationSec;
-      has = true;
-    }
-  }
-  const count = `${assignments.length}곳`;
-  return has ? `${count} · ${formatDuration(total)}` : count;
-}
+// 2026-09-15 일차 헤더에서 차량 합산 시간 제거 (Directions 호출 절약)
 
 function CompactAssignmentRow({
   assignment,
@@ -417,11 +391,9 @@ function PoolPanel({ canWrite }: { canWrite: boolean }) {
 
 function TimelineChrome({
   canWrite,
-  placesById,
   onMapFocus,
 }: {
   canWrite: boolean;
-  placesById: Record<string, Place>;
   onMapFocus?: () => void;
 }) {
   const selectedPlan = useTravelStore((s) => s.selectedPlan);
@@ -438,7 +410,7 @@ function TimelineChrome({
         {activeDay}일차
         <span className="ml-1 font-normal text-slate-400">
           {getDateForDay(selectedPlan.startDate, activeDay)} ·{' '}
-          {dayDrivingSummary(assignments, placesById)}
+          {assignments.length}곳
         </span>
       </p>
       {onMapFocus && (
@@ -729,7 +701,7 @@ export default function PlacePoolBoard({ canWrite }: PlacePoolBoardProps) {
         <div className="relative flex min-h-0 flex-1 overflow-hidden">
           {isDesktop && (
             <aside className="relative flex w-[280px] shrink-0 flex-col border-r border-slate-200 bg-white">
-              <TimelineChrome canWrite={canWrite} placesById={placesById} />
+              <TimelineChrome canWrite={canWrite} />
               <CompactTimeline
                 dayIndex={activeDay}
                 assignments={assignments}
@@ -819,7 +791,6 @@ export default function PlacePoolBoard({ canWrite }: PlacePoolBoardProps) {
             </button>
             <TimelineChrome
               canWrite={canWrite}
-              placesById={placesById}
               onMapFocus={enterMapFocus}
             />
             {inspectorOpen && sheetSnap === 'full' ? (

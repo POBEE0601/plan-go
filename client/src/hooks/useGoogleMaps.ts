@@ -10,5 +10,3 @@ export const GOOGLE_MAPS_LOADER_OPTIONS = {
 };
 
 export const useGoogleMaps = () => useJsApiLoader(GOOGLE_MAPS_LOADER_OPTIONS);
-
-export const mapsEmbedKey = MAPS_KEY || '';

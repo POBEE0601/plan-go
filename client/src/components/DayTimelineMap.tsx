@@ -1,7 +1,7 @@
 // 2026-09-14 모바일 카메라 컨트롤 숨김 (목록/검색 바와 겹침 방지)
 // 2026-09-14 시트 접힘 시 지도 리사이즈·bounds 재맞춤
-// 2026-09-01 차량 경로 1회만 조회 (TransitHint와 캐시·inflight 공유)
-// 2026-09-01 일차 타임라인 지도: 번호 핀 + 실제 도로 경로
+// 2026-09-15 차량 Directions 조회 중단. 장소 사이는 직선으로 표시
+// 2026-09-01 일차 타임라인 지도: 번호 핀 + 장소 연결선
 // 2026-09-03 워크스페이스 캔버스: 검색 마커·빈 날에도 지도 유지
 // 2026-09-04 목록형 패널용 헤더(showHeader)
 // 2026-09-04 다크 테마 지도 스타일
@@ -12,7 +12,6 @@ import { useGoogleMaps } from '../hooks/useGoogleMaps';
 import { useMapUiStore } from '../store/useMapUiStore';
 import { useTravelStore } from '../store/useTravelStore';
 import { useThemeStore } from '../store/useThemeStore';
-import { fetchJsRoute } from '../utils/jsDirections';
 import { DARK_MAP_STYLES } from '../utils/mapTheme';
 import type { Place, PlaceSearchResult } from '../types/travel';
 
@@ -70,34 +69,22 @@ export default function DayTimelineMap({
     });
   }, [theme]);
 
-  // 연속 장소 사이 차량 경로. 실패하면 직선으로 이음
+  // 연속 장소 사이는 직선. 도로 경로는 구글맵 길찾기에서 확인
   useEffect(() => {
-    if (!isLoaded || places.length < 2) {
+    if (places.length < 2) {
       setPaths([]);
       return;
     }
-
-    let cancelled = false;
-    const run = async () => {
-      const segments = await Promise.all(
-        places.slice(1).map(async (to, i) => {
-          const from = places[i];
-          const route = await fetchJsRoute(from, to, 'driving');
-          if (route?.overviewPath.length) return route.overviewPath;
-          return [
-            { lat: from.lat, lng: from.lng },
-            { lat: to.lat, lng: to.lng },
-          ];
-        }),
-      );
-      if (!cancelled) setPaths(segments);
-    };
-
-    void run();
-    return () => {
-      cancelled = true;
-    };
-  }, [isLoaded, placeKey, places]);
+    setPaths(
+      places.slice(1).map((to, i) => {
+        const from = places[i];
+        return [
+          { lat: from.lat, lng: from.lng },
+          { lat: to.lat, lng: to.lng },
+        ];
+      }),
+    );
+  }, [placeKey, places]);
 
   useEffect(() => {
     const map = mapRef.current;
