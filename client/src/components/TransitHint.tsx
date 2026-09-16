@@ -1,3 +1,4 @@
+// 2026-09-16 장소 사이 직선거리 문구 제거
 // 2026-09-15 칩 클릭 시 하단 바로가기 시트. 구글맵은 시트에서만 연결
 import { useState } from 'react';
 import { Bus, Car, ChevronRight, Footprints } from 'lucide-react';
@@ -22,21 +23,6 @@ const modeIcon = (mode: TravelModeKey) => {
 
 const modeLabel = (mode: TravelModeKey) =>
   mode === 'walking' ? '도보' : mode === 'transit' ? '대중교통' : '차량';
-
-// 도로/환승이 아닌 좌표 직선거리. API 없이 구간 스케일만 보여 줌
-const straightDistanceText = (from: Place, to: Place): string => {
-  const toRad = (deg: number) => (deg * Math.PI) / 180;
-  const dLat = toRad(to.lat - from.lat);
-  const dLng = toRad(to.lng - from.lng);
-  const a =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos(toRad(from.lat)) *
-      Math.cos(toRad(to.lat)) *
-      Math.sin(dLng / 2) ** 2;
-  const km = 6371 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-  if (km < 1) return `${Math.max(1, Math.round(km * 1000))} m`;
-  return `${km < 10 ? km.toFixed(1) : Math.round(km)} km`;
-};
 
 function ModeChip({
   mode,
@@ -70,7 +56,6 @@ export default function TransitHint({
 }: TransitHintProps) {
   const [detailOpen, setDetailOpen] = useState(false);
   const [detailMode, setDetailMode] = useState<TravelModeKey>('driving');
-  const distance = straightDistanceText(from, to);
 
   const openDetail = (mode: TravelModeKey) => {
     setDetailMode(mode);
@@ -99,7 +84,6 @@ export default function TransitHint({
               onOpen={() => openDetail(mode)}
             />
           ))}
-          <span className="px-0.5 text-[10px] text-slate-400">직선 {distance}</span>
         </div>
         {modal}
       </>
@@ -122,7 +106,7 @@ export default function TransitHint({
               ))}
             </div>
             <p className="mt-0.5 text-[10px] text-slate-400">
-              직선 {distance} · 탭하면 구글 지도 바로가기
+              탭하면 구글 지도 바로가기
             </p>
           </div>
           <ChevronRight className="mt-0.5 h-3.5 w-3.5 shrink-0 text-slate-300" />
