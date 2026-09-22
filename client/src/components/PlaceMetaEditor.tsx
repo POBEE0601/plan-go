@@ -1,3 +1,4 @@
+// 2026-09-23 저장 모달보다 카테고리 팝오버가 위에 오게
 // 2026-09-23 커스텀 카테고리 추가·삭제, 팝오버를 body 포털로 표시
 // 2026-09-22 일정 행: 카테고리·핀 색·한 줄 소개 (행 높이 고정)
 import { useEffect, useRef, useState } from 'react';
@@ -179,7 +180,7 @@ export default function PlaceMetaEditor({
         createPortal(
           <div
             ref={menuRef}
-            className="fixed z-50 w-64 max-h-80 overflow-y-auto rounded-xl border border-slate-200 bg-white p-2 shadow-lg"
+            className="fixed z-[90] w-64 max-h-80 overflow-y-auto rounded-xl border border-slate-200 bg-white p-2 shadow-lg"
             style={{ top: menuPos.top, left: menuPos.left }}
             onClick={(e) => e.stopPropagation()}
           >

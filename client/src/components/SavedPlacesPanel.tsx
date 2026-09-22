@@ -1,12 +1,19 @@
+// 2026-09-23 저장 탭 장소 클릭 시 일정과 같은 메모·카테고리 모달
 // 2026-09-23 저장 탭에서 카테고리·핀 색·한 줄 소개 수정
 // 2026-09-22 저장 탭: 카테고리 칩 + 장소 목록 + 빈 화면
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import { Heart, Plus, Trash2 } from 'lucide-react';
 import { useTravelStore } from '../store/useTravelStore';
 import { usePlanUiStore } from '../store/usePlanUiStore';
-import { categoryEmoji, categoryLabel, planCategoryIds } from '../utils/days';
-import PlaceMetaEditor from './PlaceMetaEditor';
+import {
+  categoryEmoji,
+  categoryLabel,
+  getDayCount,
+  planCategoryIds,
+} from '../utils/days';
+import PlaceInspector from './PlaceInspector';
 import type { PlaceCategory } from '../types/travel';
 
 interface SavedPlacesPanelProps {
@@ -19,18 +26,16 @@ export default function SavedPlacesPanel({
   searchOpen = false,
 }: SavedPlacesPanelProps) {
   const navigate = useNavigate();
-  const {
-    selectedPlan,
-    assignToDay,
-    deletePlace,
-    setMapCenter,
-    setSelectedMapPlace,
-  } = useTravelStore();
+  const { selectedPlan, assignToDay, deletePlace } = useTravelStore();
   const activeDay = usePlanUiStore((s) => s.activeDay);
   const [poolFilter, setPoolFilter] = useState<PlaceCategory | 'all'>('all');
   const [query, setQuery] = useState('');
+  const [inspectId, setInspectId] = useState<string | null>(null);
 
   const places = selectedPlan?.places ?? [];
+  const dayCount = selectedPlan
+    ? getDayCount(selectedPlan.startDate, selectedPlan.endDate)
+    : 1;
 
   const filteredPlaces = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -43,6 +48,31 @@ export default function SavedPlacesPanel({
       );
     });
   }, [places, poolFilter, query]);
+
+  const inspectPlace = inspectId
+    ? (places.find((p) => p.id === inspectId) ?? null)
+    : null;
+  const inspectAssignment = inspectPlace
+    ? (selectedPlan?.dayAssignments.find(
+        (a) => a.placeId === inspectPlace.id && a.dayIndex === activeDay,
+      ) ??
+      selectedPlan?.dayAssignments.find((a) => a.placeId === inspectPlace.id) ??
+      null)
+    : null;
+
+  useEffect(() => {
+    if (!inspectPlace) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setInspectId(null);
+    };
+    document.addEventListener('keydown', onKey);
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.removeEventListener('keydown', onKey);
+      document.body.style.overflow = prev;
+    };
+  }, [inspectPlace]);
 
   const assignedDaysOf = (placeId: string): number[] => {
     if (!selectedPlan) return [];
@@ -141,11 +171,7 @@ export default function SavedPlacesPanel({
                 <div className="flex items-start gap-3">
                   <button
                     type="button"
-                    onClick={() => {
-                      setMapCenter(place.lat, place.lng);
-                      setSelectedMapPlace(place);
-                      navigate('/dashboard?tab=home');
-                    }}
+                    onClick={() => setInspectId(place.id)}
                     className="flex min-w-0 flex-1 items-start gap-3 text-left"
                   >
                     {place.photoUrl ? (
@@ -204,14 +230,36 @@ export default function SavedPlacesPanel({
                     </div>
                   )}
                 </div>
-                <div className="mt-1 pl-[4.25rem]">
-                  <PlaceMetaEditor place={place} canWrite={canWrite} />
-                </div>
               </li>
             );
           })}
         </ul>
       )}
+
+      {inspectPlace &&
+        createPortal(
+          <div
+            className="fixed inset-0 z-[80] flex items-end justify-center bg-black/40 sm:items-center sm:p-4"
+            onClick={() => setInspectId(null)}
+          >
+            <div
+              role="dialog"
+              aria-label={`${inspectPlace.name} 상세`}
+              className="flex h-[min(88dvh,42rem)] w-full max-w-lg flex-col overflow-hidden rounded-t-2xl bg-white shadow-xl sm:rounded-2xl"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <PlaceInspector
+                assignment={inspectAssignment}
+                place={inspectPlace}
+                dayCount={dayCount}
+                canWrite={canWrite}
+                onClose={() => setInspectId(null)}
+                variant="sheet"
+              />
+            </div>
+          </div>,
+          document.body,
+        )}
     </div>
   );
 }

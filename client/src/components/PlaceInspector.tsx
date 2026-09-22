@@ -1,3 +1,4 @@
+// 2026-09-23 저장 탭: 배정 없는 장소도 카테고리·메모 모달로 수정
 // 2026-09-22 인스펙터에서 카테고리·핀 색·소개 편집
 // 2026-09-07 모바일 메모 버튼이 시트 하단에 잘리지 않도록
 // 2026-09-07 모바일 인라인 메모·PC 팝업 메모
@@ -17,7 +18,7 @@ import type { DayAssignment, Place } from '../types/travel';
 import PlaceMetaEditor from './PlaceMetaEditor';
 
 interface PlaceInspectorProps {
-  assignment: DayAssignment;
+  assignment?: DayAssignment | null;
   place: Place;
   dayCount: number;
   canWrite: boolean;
@@ -36,11 +37,12 @@ export default function PlaceInspector({
   const { moveAssignment, removeFromDay } = useTravelStore();
   const setActiveDay = usePlanUiStore((s) => s.setActiveDay);
   const [memoOpen, setMemoOpen] = useState(false);
-  const memo = assignment.memo;
+  const memo = assignment?.memo ?? place.memo;
   const typeLabels = briefTypeLabels(place.types);
   const isSheet = variant === 'sheet';
 
   const handleRemove = async () => {
+    if (!assignment) return;
     await removeFromDay(assignment.id);
     onClose();
   };
@@ -114,7 +116,7 @@ export default function PlaceInspector({
         <PlaceMetaEditor place={place} canWrite={canWrite} />
       </div>
 
-      {assignment.time && (
+      {assignment?.time && (
         <div className="shrink-0 border-t border-slate-100 px-3 py-2">
           <p className="flex items-center gap-1 text-[12px] text-slate-600">
             <Clock className="h-3.5 w-3.5" />
@@ -124,7 +126,7 @@ export default function PlaceInspector({
       )}
 
       <div className="flex shrink-0 flex-wrap items-center gap-2 border-t border-slate-100 px-3 py-2">
-        {canWrite && dayCount > 1 && (
+        {canWrite && assignment && dayCount > 1 && (
           <div className="min-w-0 flex-1">
             <DayMoveControl
               currentDay={assignment.dayIndex}
@@ -137,7 +139,7 @@ export default function PlaceInspector({
             />
           </div>
         )}
-        {canWrite && (
+        {canWrite && assignment && (
           <button
             type="button"
             onClick={() => void handleRemove()}
@@ -171,7 +173,8 @@ export default function PlaceInspector({
 
       {isSheet && (
         <AssignmentMemoInline
-          assignmentId={assignment.id}
+          assignmentId={assignment?.id}
+          placeId={place.id}
           memo={memo}
           canWrite={canWrite}
         />
@@ -180,7 +183,8 @@ export default function PlaceInspector({
       {!isSheet && (
         <AssignmentMemoModal
           open={memoOpen}
-          assignmentId={assignment.id}
+          assignmentId={assignment?.id}
+          placeId={place.id}
           placeName={place.name}
           memo={memo}
           canWrite={canWrite}

@@ -1,3 +1,4 @@
+// 2026-09-23 저장 탭: 배정 없으면 장소 메모로 저장
 // 2026-09-07 모바일 하단 버튼이 시트에 잘리지 않도록 여백·축소
 // 2026-09-07 모바일: 장소 상세 아래 인라인 메모 입력·수정·삭제
 import { useEffect, useState } from 'react';
@@ -6,17 +7,20 @@ import { useTravelStore } from '../store/useTravelStore';
 import { ASSIGNMENT_MEMO_MAX } from './AssignmentMemoModal';
 
 interface AssignmentMemoInlineProps {
-  assignmentId: string;
+  assignmentId?: string;
+  placeId?: string;
   memo?: string;
   canWrite: boolean;
 }
 
 export default function AssignmentMemoInline({
   assignmentId,
+  placeId,
   memo,
   canWrite,
 }: AssignmentMemoInlineProps) {
   const updateAssignmentMemo = useTravelStore((s) => s.updateAssignmentMemo);
+  const updatePlaceMeta = useTravelStore((s) => s.updatePlaceMeta);
   const [draft, setDraft] = useState(memo ?? '');
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState('');
@@ -24,7 +28,7 @@ export default function AssignmentMemoInline({
   useEffect(() => {
     setDraft(memo ?? '');
     setMessage('');
-  }, [assignmentId, memo]);
+  }, [assignmentId, placeId, memo]);
 
   const saved = (memo ?? '').trim();
   const next = draft.trim();
@@ -34,7 +38,13 @@ export default function AssignmentMemoInline({
     setSaving(true);
     setMessage('');
     try {
-      await updateAssignmentMemo(assignmentId, value);
+      if (assignmentId) {
+        await updateAssignmentMemo(assignmentId, value);
+      } else if (placeId) {
+        await updatePlaceMeta(placeId, { memo: value });
+      } else {
+        throw new Error('메모를 저장할 대상이 없습니다.');
+      }
       setMessage(value ? '저장했습니다.' : '메모를 삭제했습니다.');
     } catch (err) {
       setMessage(err instanceof Error ? err.message : '메모 저장에 실패했습니다.');

@@ -1,3 +1,4 @@
+// 2026-09-23 저장 탭: 배정 없으면 장소 메모로 저장
 // 2026-09-07 PC: 일정 장소 메모 버튼·팝업 (장소당 1개)
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
@@ -8,7 +9,8 @@ export const ASSIGNMENT_MEMO_MAX = 2000;
 
 interface AssignmentMemoModalProps {
   open: boolean;
-  assignmentId: string;
+  assignmentId?: string;
+  placeId?: string;
   placeName: string;
   memo?: string;
   canWrite: boolean;
@@ -18,12 +20,14 @@ interface AssignmentMemoModalProps {
 export default function AssignmentMemoModal({
   open,
   assignmentId,
+  placeId,
   placeName,
   memo,
   canWrite,
   onClose,
 }: AssignmentMemoModalProps) {
   const updateAssignmentMemo = useTravelStore((s) => s.updateAssignmentMemo);
+  const updatePlaceMeta = useTravelStore((s) => s.updatePlaceMeta);
   const [draft, setDraft] = useState(memo ?? '');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -33,7 +37,7 @@ export default function AssignmentMemoModal({
       setDraft(memo ?? '');
       setError('');
     }
-  }, [open, assignmentId, memo]);
+  }, [open, assignmentId, placeId, memo]);
 
   useEffect(() => {
     if (!open) return;
@@ -59,7 +63,13 @@ export default function AssignmentMemoModal({
     setSaving(true);
     setError('');
     try {
-      await updateAssignmentMemo(assignmentId, value);
+      if (assignmentId) {
+        await updateAssignmentMemo(assignmentId, value);
+      } else if (placeId) {
+        await updatePlaceMeta(placeId, { memo: value });
+      } else {
+        throw new Error('메모를 저장할 대상이 없습니다.');
+      }
       onClose();
     } catch (err) {
       setError(err instanceof Error ? err.message : '메모 저장에 실패했습니다.');
