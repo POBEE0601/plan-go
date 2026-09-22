@@ -1,3 +1,4 @@
+// 2026-09-23 핀 번호는 보이는 장소 순서와 동일
 // 2026-09-23 여행 홈: 가로 스와이프 카드가 지도 초점을 바꿈
 import { useEffect, useRef } from 'react';
 import type { DayAssignment, Place } from '../types/travel';
@@ -70,9 +71,16 @@ export default function DayPlaceCarousel({
       onScroll={pickCentered}
       className="flex snap-x snap-mandatory gap-3 overflow-x-auto px-4 pb-3 pt-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
     >
-      {assignments.map((assignment, index) => {
-        const place = placesById[assignment.placeId];
-        if (!place) return null;
+      {assignments
+        .map((assignment) => ({
+          assignment,
+          place: placesById[assignment.placeId],
+        }))
+        .filter(
+          (row): row is { assignment: DayAssignment; place: Place } =>
+            Boolean(row.place),
+        )
+        .map(({ assignment, place }, index) => {
         const active = assignment.id === selectedAssignmentId;
         return (
           <button

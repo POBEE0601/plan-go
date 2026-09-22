@@ -1,3 +1,4 @@
+// 2026-09-23 여행홈 시트 최소 높이는 가로 카드까지
 // 2026-09-23 일정 검색·지도 돋보기·하단 시트 드래그
 // 2026-09-22 모바일 홈바: 지도/일정 전용 화면
 // 2026-09-15 일차 헤더 차량 합산 시간 제거
@@ -24,7 +25,7 @@ import {
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   GripVertical,
   List,
@@ -224,6 +225,7 @@ function CompactPoolPlace({
   );
 }
 
+// 2026-09-23 목록 스크롤일 때만 따라가게 해서 카드 선택과 싸우지 않게
 function CompactTimeline({
   dayIndex,
   assignments,
@@ -243,6 +245,7 @@ function CompactTimeline({
   const selectAssignment = usePlanUiStore((s) => s.selectAssignment);
   const ids = assignments.map((a) => a.id);
   const scrollRef = useRef<HTMLDivElement | null>(null);
+  const userScrollRef = useRef(false);
 
   const setListRef = (node: HTMLDivElement | null) => {
     setNodeRef(node);
@@ -250,6 +253,17 @@ function CompactTimeline({
   };
 
   useEffect(() => {
+    const root = scrollRef.current;
+    if (!root) return;
+    const onScroll = () => {
+      userScrollRef.current = true;
+    };
+    root.addEventListener('scroll', onScroll, { passive: true });
+    return () => root.removeEventListener('scroll', onScroll);
+  }, [assignments]);
+
+  useEffect(() => {
+    userScrollRef.current = false;
     if (!selectedAssignmentId) return;
     const el = document.getElementById(`day-place-${selectedAssignmentId}`);
     const root = scrollRef.current;
@@ -265,6 +279,7 @@ function CompactTimeline({
     if (!root) return;
     const observer = new IntersectionObserver(
       (entries) => {
+        if (!userScrollRef.current) return;
         const visible = entries
           .filter((e) => e.isIntersecting)
           .sort(
@@ -297,11 +312,14 @@ function CompactTimeline({
               : '아직 배정된 장소가 없습니다'}
           </p>
         )}
-        {assignments.map((a, index) => {
-          const place = placesById[a.placeId];
-          if (!place) return null;
-          const prev =
-            index > 0 ? placesById[assignments[index - 1].placeId] : null;
+        {assignments
+          .map((a) => ({ a, place: placesById[a.placeId] }))
+          .filter(
+            (row): row is { a: DayAssignment; place: Place } =>
+              Boolean(row.place),
+          )
+          .map(({ a, place }, index, rows) => {
+          const prev = index > 0 ? rows[index - 1].place : null;
           return (
             <Fragment key={a.id}>
               {prev && (
@@ -521,6 +539,9 @@ export default function PlacePoolBoard({
   } = usePlanUiStore();
 
   const [activeId, setActiveId] = useState<string | null>(null);
+  // 2026-09-23 하단 시트 높이를 지도 가시 영역 보정에 사용
+  const [sheetHeight, setSheetHeight] = useState(0);
+  const onSheetHeight = useCallback((h: number) => setSheetHeight(h), []);
   // 2026-09-23 지도 좌측 돋보기로 검색바 토글 (기본 숨김)
   const [mapSearchOpen, setMapSearchOpen] = useState(false);
   // 지도 전체 보기 중 검색바만 따로 다시 열기
@@ -738,7 +759,7 @@ export default function PlacePoolBoard({
   };
 
   // 지도 영역 대비 비율이라 DevTools·실기기 모두 같은 비율로 보임
-  const sheetHeight = sheetSnap === 'full' ? 'h-[88%]' : 'h-[62%]';
+  const sheetHeightClass = sheetSnap === 'full' ? 'h-[88%]' : 'h-[62%]';
 
   const inspector = selectedAssignment && selectedPlace && (
     <PlaceInspector
@@ -811,22 +832,31 @@ export default function PlacePoolBoard({
             <DayTimelineMap
               places={orderedPlaces}
               focusPlaceId={focusPlaceId}
+              focusToken={selectedAssignmentId}
               onSelectPlace={onSelectMapPlace}
-              layoutKey={useMobileSchedule ? 'mob-schedule' : 'mob-map'}
+              layoutKey={`${useMobileSchedule ? 'mob-schedule' : 'mob-map'}-${sheetHeight}-${mapSearchOpen ? 's' : 'n'}`}
+              overlayPadding={{
+                top: mapSearchOpen ? 96 : 72,
+                right: 48,
+                bottom: Math.max(24, sheetHeight + 12),
+                left: 12,
+              }}
             />
             {mapSearchOverlay}
             <ResizablePlaceSheet
               defaultRatio={useMobileSchedule ? 0.5 : 0.34}
-              minPx={useMobileSchedule ? 176 : 188}
+              minPx={useMobileSchedule ? 176 : 96}
+              onHeightChange={onSheetHeight}
             >
-              <DayTabs canWrite={canWrite} />
               {useMobileSchedule ? (
                 inspectorOpen && sheetInspector ? (
                   <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+                    <DayTabs canWrite={canWrite} />
                     {sheetInspector}
                   </div>
                 ) : (
                   <>
+                    <DayTabs canWrite={canWrite} />
                     <TimelineChrome canWrite={canWrite} showPool={false} />
                     <CompactTimeline
                       dayIndex={activeDay}
@@ -837,8 +867,9 @@ export default function PlacePoolBoard({
                   </>
                 )
               ) : (
-                <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-                  <div className="shrink-0">
+                <>
+                  <div data-sheet-min className="shrink-0">
+                    <DayTabs canWrite={canWrite} />
                     <DayPlaceCarousel
                       assignments={assignments}
                       placesById={placesById}
@@ -852,7 +883,7 @@ export default function PlacePoolBoard({
                     placesById={placesById}
                     canWrite={canWrite}
                   />
-                </div>
+                </>
               )}
             </ResizablePlaceSheet>
           </div>
@@ -879,6 +910,7 @@ export default function PlacePoolBoard({
             <DayTimelineMap
               places={orderedPlaces}
               focusPlaceId={focusPlaceId}
+              focusToken={selectedAssignmentId}
               onSelectPlace={onSelectMapPlace}
               layoutKey={`${isDesktop ? 'desk' : 'mob'}-${sheetSnap}-${mapFocusSearch ? 's' : 'n'}`}
             />
@@ -942,7 +974,7 @@ export default function PlacePoolBoard({
 
           {!isDesktop && !mapFocus && (
           <div
-            className={`absolute inset-x-0 bottom-0 z-20 flex flex-col overflow-hidden rounded-t-2xl border-t border-slate-200 bg-white shadow-[0_-8px_24px_rgba(15,23,42,0.12)] ${sheetHeight}`}
+            className={`absolute inset-x-0 bottom-0 z-20 flex flex-col overflow-hidden rounded-t-2xl border-t border-slate-200 bg-white shadow-[0_-8px_24px_rgba(15,23,42,0.12)] ${sheetHeightClass}`}
           >
             <button
               type="button"

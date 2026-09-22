@@ -1,10 +1,12 @@
+// 2026-09-23 저장 탭에서 카테고리·핀 색·한 줄 소개 수정
 // 2026-09-22 저장 탭: 카테고리 칩 + 장소 목록 + 빈 화면
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Heart, Plus, Trash2 } from 'lucide-react';
 import { useTravelStore } from '../store/useTravelStore';
 import { usePlanUiStore } from '../store/usePlanUiStore';
-import { categoryLabel, planCategoryIds } from '../utils/days';
+import { categoryEmoji, categoryLabel, planCategoryIds } from '../utils/days';
+import PlaceMetaEditor from './PlaceMetaEditor';
 import type { PlaceCategory } from '../types/travel';
 
 interface SavedPlacesPanelProps {
@@ -134,73 +136,77 @@ export default function SavedPlacesPanel({
             return (
               <li
                 key={place.id}
-                className="flex items-start gap-3 border-b border-slate-100 px-4 py-3"
+                className="border-b border-slate-100 px-4 py-3"
               >
-                <button
-                  type="button"
-                  onClick={() => {
-                    setMapCenter(place.lat, place.lng);
-                    setSelectedMapPlace(place);
-                    navigate('/dashboard?tab=home');
-                  }}
-                  className="flex min-w-0 flex-1 items-start gap-3 text-left"
-                >
-                  {place.photoUrl ? (
-                    <img
-                      src={place.photoUrl}
-                      alt=""
-                      className="h-14 w-14 shrink-0 rounded-lg object-cover"
-                      onError={(e) => {
-                        e.currentTarget.style.display = 'none';
-                      }}
-                    />
-                  ) : (
-                    <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-lg">
-                      {place.name.slice(0, 1)}
-                    </span>
-                  )}
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate text-[15px] font-semibold text-slate-800">
-                      {place.name}
-                    </span>
-                    {place.address && (
-                      <span className="mt-0.5 block truncate text-xs text-slate-400">
-                        {place.address}
+                <div className="flex items-start gap-3">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMapCenter(place.lat, place.lng);
+                      setSelectedMapPlace(place);
+                      navigate('/dashboard?tab=home');
+                    }}
+                    className="flex min-w-0 flex-1 items-start gap-3 text-left"
+                  >
+                    {place.photoUrl ? (
+                      <img
+                        src={place.photoUrl}
+                        alt=""
+                        className="h-14 w-14 shrink-0 rounded-lg object-cover"
+                        onError={(e) => {
+                          e.currentTarget.style.display = 'none';
+                        }}
+                      />
+                    ) : (
+                      <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-lg">
+                        {categoryEmoji(place.category)}
                       </span>
                     )}
-                    <span className="mt-1 flex flex-wrap items-center gap-1 text-[11px] text-slate-500">
-                      <span>{categoryLabel(place.category)}</span>
-                      {days.map((d) => (
-                        <span
-                          key={d}
-                          className="rounded bg-primary-50 px-1.5 py-0.5 text-primary-700"
-                        >
-                          {d}일차
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-[15px] font-semibold text-slate-800">
+                        {place.name}
+                      </span>
+                      {place.address && (
+                        <span className="mt-0.5 block truncate text-xs text-slate-400">
+                          {place.address}
                         </span>
-                      ))}
+                      )}
+                      <span className="mt-1 flex flex-wrap items-center gap-1 text-[11px] text-slate-500">
+                        {days.map((d) => (
+                          <span
+                            key={d}
+                            className="rounded bg-primary-50 px-1.5 py-0.5 text-primary-700"
+                          >
+                            {d}일차
+                          </span>
+                        ))}
+                      </span>
                     </span>
-                  </span>
-                </button>
-                {canWrite && (
-                  <div className="flex shrink-0 flex-col items-end gap-1">
-                    <button
-                      type="button"
-                      onClick={() => assignToDay(place.id, activeDay)}
-                      className="inline-flex h-8 items-center gap-0.5 rounded-md bg-primary-50 px-2 text-[11px] font-medium text-primary-700"
-                    >
-                      <Plus className="h-3 w-3" />
-                      {activeDay}일
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => deletePlace(place.id)}
-                      className="rounded p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-500"
-                      aria-label="장소 삭제"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </button>
-                  </div>
-                )}
+                  </button>
+                  {canWrite && (
+                    <div className="flex shrink-0 flex-col items-end gap-1">
+                      <button
+                        type="button"
+                        onClick={() => assignToDay(place.id, activeDay)}
+                        className="inline-flex h-8 items-center gap-0.5 rounded-md bg-primary-50 px-2 text-[11px] font-medium text-primary-700"
+                      >
+                        <Plus className="h-3 w-3" />
+                        {activeDay}일
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => deletePlace(place.id)}
+                        className="rounded p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-500"
+                        aria-label="장소 삭제"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </div>
+                  )}
+                </div>
+                <div className="mt-1 pl-[4.25rem]">
+                  <PlaceMetaEditor place={place} canWrite={canWrite} />
+                </div>
               </li>
             );
           })}

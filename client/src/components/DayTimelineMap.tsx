@@ -1,3 +1,4 @@
+// 2026-09-23 하단 시트 가림을 빼고 선택 장소로 카메라를 맞춤
 // 2026-09-23 선택 장소로 카메라가 따라가며 이웃 핀까지 보이게
 // 2026-09-22 카테고리 색 핀 + 클릭 시 장소명·카테고리
 // 2026-09-14 모바일 카메라 컨트롤 숨김 (목록/검색 바와 겹침 방지)
@@ -27,9 +28,35 @@ interface DayTimelineMapProps {
   showHeader?: boolean;
   // 시트·검색바 토글처럼 컨테이너 크기가 바뀔 때 리사이즈 트리거
   layoutKey?: string;
+  // 하단 시트 등 가림 높이(px). 핀이 보이는 영역 중앙에 오도록
+  overlayPadding?: {
+    top?: number;
+    right?: number;
+    bottom?: number;
+    left?: number;
+  };
+  // 같은 장소가 하루에 두 번일 때 배정 전환도 따라가게
+  focusToken?: string | null;
 }
 
 const mapContainerStyle = { width: '100%', height: '100%' };
+
+const DEFAULT_PAD = { top: 72, right: 48, bottom: 24, left: 16 };
+
+function focusCamera(
+  map: google.maps.Map,
+  target: google.maps.LatLngLiteral,
+  padding: google.maps.Padding,
+) {
+  const bounds = new google.maps.LatLngBounds();
+  bounds.extend(target);
+  map.fitBounds(bounds, padding);
+  window.setTimeout(() => {
+    const z = map.getZoom();
+    if (z != null && z > 16) map.setZoom(16);
+    if (z != null && z < 14) map.setZoom(15);
+  }, 80);
+}
 
 export default function DayTimelineMap({
   places,
@@ -37,6 +64,8 @@ export default function DayTimelineMap({
   onSelectPlace,
   showHeader = false,
   layoutKey,
+  overlayPadding,
+  focusToken,
 }: DayTimelineMapProps) {
   const { isLoaded, loadError } = useGoogleMaps();
   const searchResults = useMapUiStore((s) => s.searchResults);
@@ -51,6 +80,14 @@ export default function DayTimelineMap({
   const [mapReady, setMapReady] = useState(false);
   const [paths, setPaths] = useState<google.maps.LatLngLiteral[][]>([]);
   const [infoPlaceId, setInfoPlaceId] = useState<string | null>(null);
+  const padTop = overlayPadding?.top ?? DEFAULT_PAD.top;
+  const padRight = overlayPadding?.right ?? DEFAULT_PAD.right;
+  const padBottom = overlayPadding?.bottom ?? DEFAULT_PAD.bottom;
+  const padLeft = overlayPadding?.left ?? DEFAULT_PAD.left;
+  const padding = useMemo(
+    () => ({ top: padTop, right: padRight, bottom: padBottom, left: padLeft }),
+    [padTop, padRight, padBottom, padLeft],
+  );
 
   const fallbackCenter = useMemo(() => {
     if (selectedPlan?.regionLat != null && selectedPlan?.regionLng != null) {
@@ -147,33 +184,19 @@ export default function DayTimelineMap({
     const idx = places.findIndex((p) => p.id === focusPlaceId);
     if (idx < 0) return;
     const focused = places[idx];
-    const neighbors = [places[idx - 1], focused, places[idx + 1]].filter(
-      (p): p is Place => Boolean(p),
-    );
-    if (neighbors.length >= 2) {
-      const bounds = new google.maps.LatLngBounds();
-      neighbors.forEach((p) => bounds.extend({ lat: p.lat, lng: p.lng }));
-      map.fitBounds(bounds, 72);
-      const t = window.setTimeout(() => {
-        const z = map.getZoom();
-        if (z != null && z > 16) map.setZoom(16);
-        if (z != null && z < 13) map.setZoom(14);
-      }, 80);
-      return () => window.clearTimeout(t);
-    }
-    map.panTo({ lat: focused.lat, lng: focused.lng });
-    const zoom = map.getZoom() ?? 14;
-    if (zoom < 14) map.setZoom(15);
-  }, [focusPlaceId, places, isLoaded, mapReady]);
+    const t = window.setTimeout(() => {
+      focusCamera(map, { lat: focused.lat, lng: focused.lng }, padding);
+    }, 40);
+    return () => window.clearTimeout(t);
+  }, [focusPlaceId, focusToken, places, isLoaded, mapReady, padding, layoutKey]);
 
-  // 검색 결과가 생기면 첫 결과로 이동
+  // 검색 결과가 생기면 첫 결과로 이동 (시트 가림 보정)
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !mapReady || searchResults.length === 0) return;
     const first = searchResults[0];
-    map.panTo({ lat: first.lat, lng: first.lng });
-    map.setZoom(14);
-  }, [searchKey, mapReady, searchResults]);
+    focusCamera(map, { lat: first.lat, lng: first.lng }, padding);
+  }, [searchKey, mapReady, searchResults.length, padding]);
 
   const onSearchMarkerClick = (result: PlaceSearchResult) => {
     setSelectedMapPlace(result);
