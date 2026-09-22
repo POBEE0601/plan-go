@@ -19,7 +19,8 @@ CREATE TABLE IF NOT EXISTS travel_plans (
   region_lat DOUBLE PRECISION,
   region_lng DOUBLE PRECISION,
   prep_memo TEXT NOT NULL DEFAULT '',
-  prep_seeded BOOLEAN NOT NULL DEFAULT false
+  prep_seeded BOOLEAN NOT NULL DEFAULT false,
+  custom_categories JSONB NOT NULL DEFAULT '[]'::jsonb
 );
 
 CREATE TABLE IF NOT EXISTS places (
@@ -30,10 +31,11 @@ CREATE TABLE IF NOT EXISTS places (
   address TEXT NOT NULL DEFAULT '',
   lat DOUBLE PRECISION NOT NULL,
   lng DOUBLE PRECISION NOT NULL,
-  category TEXT NOT NULL DEFAULT 'other',
+  category TEXT NOT NULL DEFAULT 'attraction',
   rating DOUBLE PRECISION,
   photo_url TEXT,
   memo TEXT,
+  pin_color TEXT,
   types JSONB
 );
 

@@ -1,3 +1,4 @@
+// 2026-09-23 가운데 정렬 옵션
 // 2026-09-07 첨부 공식 로고 PNG를 PC/모바일에서 그대로 표시
 // 2026-09-07 검정 배경 제거 후 투명 PNG로 헤더에 합성
 // 2026-09-07 다크모드용 밝은 워드마크 로고로 흰 박스 제거
@@ -7,6 +8,7 @@ interface BrandLogoProps {
   size?: BrandLogoSize;
   titleAs?: 'span' | 'h1';
   className?: string;
+  align?: 'left' | 'center';
 }
 
 const SIZE_CLASS: Record<BrandLogoSize, string> = {
@@ -19,8 +21,10 @@ export default function BrandLogo({
   size = 'md',
   titleAs = 'span',
   className = '',
+  align = 'left',
 }: BrandLogoProps) {
-  const imgClass = `block w-auto object-contain object-left ${SIZE_CLASS[size]}`;
+  const objectAlign = align === 'center' ? 'object-center' : 'object-left';
+  const imgClass = `block w-auto object-contain ${objectAlign} ${SIZE_CLASS[size]}`;
 
   return (
     <span className={`inline-flex min-w-0 items-center ${className}`}>

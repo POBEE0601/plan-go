@@ -1,8 +1,10 @@
+// 2026-09-22 장소 카테고리·핀 색·한 줄 소개 저장
 // 2026-09-07 일정 장소 메모 저장
 // 2026-09-04 초대 멤버 일정 나가기
 // 2026-08-31 Place·Day·초대 연동 Zustand 스토어
 import { create } from 'zustand';
 import type {
+  CustomCategory,
   DayAssignment,
   MemberRole,
   Place,
@@ -11,6 +13,7 @@ import type {
   TravelPlan,
 } from '../types/travel';
 import { travelApi } from '../utils/api';
+import { bindCustomCategoryGetter } from '../utils/days';
 
 interface TravelStore {
   travelPlans: TravelPlan[];
@@ -38,6 +41,16 @@ interface TravelStore {
   refreshSelectedPlan: () => Promise<void>;
 
   addPlaceFromSearch: (result: PlaceSearchResult) => Promise<Place | void>;
+  updatePlaceMeta: (
+    placeId: string,
+    updates: Partial<Pick<Place, 'category' | 'pinColor' | 'memo'>>,
+  ) => Promise<void>;
+  addCustomCategory: (input: {
+    emoji: string;
+    label: string;
+    pinColor: string;
+  }) => Promise<CustomCategory | void>;
+  removeCustomCategory: (categoryId: string) => Promise<void>;
   deletePlace: (placeId: string) => Promise<void>;
   assignToDay: (placeId: string, dayIndex: number) => Promise<void>;
   moveAssignment: (
@@ -272,6 +285,77 @@ export const useTravelStore = create<TravelStore>((set, get) => ({
           err instanceof Error ? err.message : '장소 등록에 실패했습니다.',
       });
       throw err;
+    }
+  },
+
+  updatePlaceMeta: async (placeId, updates) => {
+    const plan = get().selectedPlan;
+    if (!plan || !canWriteRole(get().myRole)) return;
+    try {
+      const place = await travelApi.updatePlace(plan.id, placeId, updates);
+      set((state) => ({
+        selectedPlan: state.selectedPlan
+          ? {
+              ...state.selectedPlan,
+              places: state.selectedPlan.places.map((p) =>
+                p.id === placeId ? { ...p, ...place } : p,
+              ),
+            }
+          : null,
+      }));
+    } catch (err) {
+      set({
+        error:
+          err instanceof Error ? err.message : '장소 정보를 저장하지 못했습니다.',
+      });
+    }
+  },
+
+  addCustomCategory: async (input) => {
+    const plan = get().selectedPlan;
+    if (!plan || !canWriteRole(get().myRole)) return;
+    try {
+      const created = await travelApi.addCustomCategory(plan.id, input);
+      set((state) => ({
+        selectedPlan: state.selectedPlan
+          ? {
+              ...state.selectedPlan,
+              customCategories: [
+                ...(state.selectedPlan.customCategories ?? []),
+                created,
+              ],
+            }
+          : null,
+      }));
+      return created;
+    } catch (err) {
+      set({
+        error:
+          err instanceof Error
+            ? err.message
+            : '커스텀 카테고리를 추가하지 못했습니다.',
+      });
+    }
+  },
+
+  removeCustomCategory: async (categoryId) => {
+    const plan = get().selectedPlan;
+    if (!plan || !canWriteRole(get().myRole)) return;
+    try {
+      const next = await travelApi.removeCustomCategory(plan.id, categoryId);
+      set((state) => ({
+        selectedPlan: next,
+        travelPlans: state.travelPlans.map((p) =>
+          p.id === next.id ? { ...p, ...next } : p,
+        ),
+      }));
+    } catch (err) {
+      set({
+        error:
+          err instanceof Error
+            ? err.message
+            : '커스텀 카테고리를 삭제하지 못했습니다.',
+      });
     }
   },
 
@@ -601,3 +685,7 @@ export const useTravelStore = create<TravelStore>((set, get) => ({
       mapZoom: 11,
     }),
 }));
+
+bindCustomCategoryGetter(
+  () => useTravelStore.getState().selectedPlan?.customCategories ?? [],
+);

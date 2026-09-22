@@ -3,6 +3,7 @@
 import { Router } from 'express';
 import {
   acceptInvite,
+  addCustomCategory,
   addPlace,
   assignPlaceToDay,
   createInviteLink,
@@ -16,6 +17,7 @@ import {
   inviteByEmail,
   leavePlan,
   removeAssignment,
+  removeCustomCategory,
   removeMember,
   reorderDay,
   updateAssignment,
@@ -181,6 +183,52 @@ router.delete('/:planId/places/:placeId', async (req: AuthRequest, res) => {
     handleError(res, err);
   }
 });
+
+// 2026-09-23 여행별 커스텀 카테고리
+router.post('/:planId/custom-categories', async (req: AuthRequest, res) => {
+  try {
+    const body = req.body as {
+      emoji?: string;
+      label?: string;
+      pinColor?: string;
+    };
+    const created = await addCustomCategory(
+      param(req.params.planId),
+      req.userId!,
+      body,
+    );
+    if (!created) {
+      res.status(403).json({ message: '카테고리를 추가할 권한이 없습니다.' });
+      return;
+    }
+    res.status(201).json(created);
+  } catch (err) {
+    handleError(res, err);
+  }
+});
+
+router.delete(
+  '/:planId/custom-categories/:categoryId',
+  async (req: AuthRequest, res) => {
+    try {
+      const plan = await removeCustomCategory(
+        param(req.params.planId),
+        req.userId!,
+        param(req.params.categoryId),
+      );
+      if (!plan) {
+        res.status(403).json({ message: '카테고리를 삭제할 권한이 없습니다.' });
+        return;
+      }
+      res.json({
+        ...plan,
+        myRole: getMemberRole(plan, req.userId!),
+      });
+    } catch (err) {
+      handleError(res, err);
+    }
+  },
+);
 
 // Day assignments
 router.post('/:planId/days', async (req: AuthRequest, res) => {

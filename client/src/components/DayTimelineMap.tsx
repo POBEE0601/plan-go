@@ -1,3 +1,5 @@
+// 2026-09-23 선택 장소로 카메라가 따라가며 이웃 핀까지 보이게
+// 2026-09-22 카테고리 색 핀 + 클릭 시 장소명·카테고리
 // 2026-09-14 모바일 카메라 컨트롤 숨김 (목록/검색 바와 겹침 방지)
 // 2026-09-14 시트 접힘 시 지도 리사이즈·bounds 재맞춤
 // 2026-09-16 장소 사이 차량 도로 경로 복구
@@ -6,7 +8,7 @@
 // 2026-09-04 목록형 패널용 헤더(showHeader)
 // 2026-09-04 다크 테마 지도 스타일
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { GoogleMap, Marker, Polyline } from '@react-google-maps/api';
+import { GoogleMap, InfoWindow, Marker, Polyline } from '@react-google-maps/api';
 import { Loader2, MapPin } from 'lucide-react';
 import { useGoogleMaps } from '../hooks/useGoogleMaps';
 import { useMapUiStore } from '../store/useMapUiStore';
@@ -14,6 +16,8 @@ import { useTravelStore } from '../store/useTravelStore';
 import { useThemeStore } from '../store/useThemeStore';
 import { fetchJsRoute } from '../utils/jsDirections';
 import { DARK_MAP_STYLES } from '../utils/mapTheme';
+import { numberedPinIcon, pinColorOf } from '../utils/mapPin';
+import { categoryBadge } from '../utils/days';
 import type { Place, PlaceSearchResult } from '../types/travel';
 
 interface DayTimelineMapProps {
@@ -46,6 +50,7 @@ export default function DayTimelineMap({
   const mapRef = useRef<google.maps.Map | null>(null);
   const [mapReady, setMapReady] = useState(false);
   const [paths, setPaths] = useState<google.maps.LatLngLiteral[][]>([]);
+  const [infoPlaceId, setInfoPlaceId] = useState<string | null>(null);
 
   const fallbackCenter = useMemo(() => {
     if (selectedPlan?.regionLat != null && selectedPlan?.regionLng != null) {
@@ -55,7 +60,13 @@ export default function DayTimelineMap({
   }, [selectedPlan?.regionLat, selectedPlan?.regionLng, mapCenter]);
 
   const placeKey = useMemo(
-    () => places.map((p) => `${p.id}:${p.lat},${p.lng}`).join('|'),
+    () =>
+      places
+        .map(
+          (p) =>
+            `${p.id}:${p.lat},${p.lng}:${p.category}:${p.pinColor ?? ''}`,
+        )
+        .join('|'),
     [places],
   );
 
@@ -102,6 +113,7 @@ export default function DayTimelineMap({
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !mapReady || !isLoaded) return;
+    if (focusPlaceId && places.some((p) => p.id === focusPlaceId)) return;
 
     if (places.length === 1) {
       map.setCenter({ lat: places[0].lat, lng: places[0].lng });
@@ -121,7 +133,7 @@ export default function DayTimelineMap({
 
     map.setCenter(fallbackCenter);
     map.setZoom(11);
-  }, [isLoaded, mapReady, places, paths, fallbackCenter]);
+  }, [isLoaded, mapReady, places, paths, fallbackCenter, focusPlaceId]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -131,13 +143,28 @@ export default function DayTimelineMap({
 
   useEffect(() => {
     const map = mapRef.current;
-    if (!map || !focusPlaceId) return;
-    const place = places.find((p) => p.id === focusPlaceId);
-    if (!place) return;
-    map.panTo({ lat: place.lat, lng: place.lng });
+    if (!map || !mapReady || !isLoaded || !focusPlaceId) return;
+    const idx = places.findIndex((p) => p.id === focusPlaceId);
+    if (idx < 0) return;
+    const focused = places[idx];
+    const neighbors = [places[idx - 1], focused, places[idx + 1]].filter(
+      (p): p is Place => Boolean(p),
+    );
+    if (neighbors.length >= 2) {
+      const bounds = new google.maps.LatLngBounds();
+      neighbors.forEach((p) => bounds.extend({ lat: p.lat, lng: p.lng }));
+      map.fitBounds(bounds, 72);
+      const t = window.setTimeout(() => {
+        const z = map.getZoom();
+        if (z != null && z > 16) map.setZoom(16);
+        if (z != null && z < 13) map.setZoom(14);
+      }, 80);
+      return () => window.clearTimeout(t);
+    }
+    map.panTo({ lat: focused.lat, lng: focused.lng });
     const zoom = map.getZoom() ?? 14;
-    if (zoom < 13) map.setZoom(14);
-  }, [focusPlaceId, places]);
+    if (zoom < 14) map.setZoom(15);
+  }, [focusPlaceId, places, isLoaded, mapReady]);
 
   // 검색 결과가 생기면 첫 결과로 이동
   useEffect(() => {
@@ -152,6 +179,8 @@ export default function DayTimelineMap({
     setSelectedMapPlace(result);
     setMapCenter(result.lat, result.lng, 15);
   };
+
+  const infoPlace = places.find((p) => p.id === infoPlaceId) ?? null;
 
   const mapBody = (
     <div className="relative h-full min-h-0 w-full overflow-hidden bg-slate-100">
@@ -219,19 +248,36 @@ export default function DayTimelineMap({
           ))}
           {places.map((place, i) => (
             <Marker
-              key={`${place.id}-${i}`}
+              key={`${place.id}-${i}-${place.pinColor ?? ''}-${place.category}`}
               position={{ lat: place.lat, lng: place.lng }}
-              title={`${i + 1}. ${place.name}`}
+              title={`${place.name} · ${categoryBadge(place.category)}`}
               zIndex={focusPlaceId === place.id ? 200 : 100 + i}
-              label={{
-                text: String(i + 1),
-                color: '#fff',
-                fontSize: '12px',
-                fontWeight: '700',
+              icon={numberedPinIcon(
+                pinColorOf(place),
+                i + 1,
+                focusPlaceId === place.id,
+              )}
+              onClick={() => {
+                setInfoPlaceId(place.id);
+                onSelectPlace?.(place.id);
               }}
-              onClick={() => onSelectPlace?.(place.id)}
             />
           ))}
+          {infoPlace && (
+            <InfoWindow
+              position={{ lat: infoPlace.lat, lng: infoPlace.lng }}
+              onCloseClick={() => setInfoPlaceId(null)}
+            >
+              <div className="min-w-[8rem] px-0.5 py-0.5">
+                <p className="text-sm font-semibold text-slate-800">
+                  {infoPlace.name}
+                </p>
+                <p className="mt-0.5 text-xs text-slate-500">
+                  {categoryBadge(infoPlace.category)}
+                </p>
+              </div>
+            </InfoWindow>
+          )}
         </GoogleMap>
       )}
     </div>

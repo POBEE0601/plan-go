@@ -1,3 +1,4 @@
+// 2026-09-23 스크롤·카드는 인스펙터 없이 지도 초점만 바꿈
 // 2026-09-14 지도 핀 선택 시 시트 스냅 유지 옵션 (지도 전체 보기)
 // 2026-09-01 대시보드 UI: 선택 일자·좌측 메뉴 접기
 // 2026-09-03 하이브리드 레이아웃: 선택 assignment·인스펙터·풀·모바일 시트
@@ -38,7 +39,10 @@ interface PlanUiStore {
   setActiveDay: (day: number, opts?: { keepSelection?: boolean }) => void;
   toggleSidebar: () => void;
   setSidebarCollapsed: (collapsed: boolean) => void;
-  selectAssignment: (id: string | null, opts?: { keepSheet?: boolean }) => void;
+  selectAssignment: (
+    id: string | null,
+    opts?: { keepSheet?: boolean; soft?: boolean },
+  ) => void;
   closeInspector: () => void;
   setInspectorOpen: (open: boolean) => void;
   setPoolOpen: (open: boolean) => void;
@@ -72,18 +76,24 @@ export const usePlanUiStore = create<PlanUiStore>((set) => ({
     set((s) => ({ sidebarCollapsed: !s.sidebarCollapsed })),
   setSidebarCollapsed: (collapsed) => set({ sidebarCollapsed: collapsed }),
   selectAssignment: (id, opts) =>
-    set((s) => ({
-      selectedAssignmentId: id,
-      inspectorOpen: id != null && !opts?.keepSheet,
-      poolOpen: false,
-      sheetSnap: opts?.keepSheet
-        ? s.sheetSnap
-        : id != null
-          ? 'full'
-          : s.sheetSnap === 'full'
-            ? 'half'
-            : s.sheetSnap,
-    })),
+    set((s) => {
+      // 2026-09-23 스크롤·카드 스와이프는 인스펙터를 열지 않고 지도만 따라가게
+      if (opts?.soft) {
+        return { selectedAssignmentId: id };
+      }
+      return {
+        selectedAssignmentId: id,
+        inspectorOpen: id != null && !opts?.keepSheet,
+        poolOpen: false,
+        sheetSnap: opts?.keepSheet
+          ? s.sheetSnap
+          : id != null
+            ? 'full'
+            : s.sheetSnap === 'full'
+              ? 'half'
+              : s.sheetSnap,
+      };
+    }),
   closeInspector: () =>
     set((s) => ({
       inspectorOpen: false,

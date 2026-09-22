@@ -1,3 +1,5 @@
+// 2026-09-22 게시판 탭 추가
+// 2026-09-22 모바일 하단 홈바 셸
 // 2026-09-01 모바일 헤더 대응
 // 2026-08-31 배포게시판 (비회원 조회, 관리자만 작성, 목록: 일시|제목|배포상태)
 import { useEffect, useState } from 'react';
@@ -19,7 +21,8 @@ import {
   Trash2,
 } from 'lucide-react';
 import FilePreviewModal from '../components/FilePreviewModal';
-import Header from '../components/Header';
+import AppPageShell from '../components/AppPageShell';
+import BoardSectionTabs from '../components/BoardSectionTabs';
 import { releaseApi } from '../utils/api';
 import { useAuthStore } from '../store/useAuthStore';
 import type { BoardAttachment } from '../types/board';
@@ -137,7 +140,7 @@ function ReleaseList() {
   return (
     <div className="mx-auto max-w-4xl px-4 py-6">
       <div className="mb-5 flex items-center justify-between">
-        <div>
+        <div className="hidden lg:block">
           <h2 className="text-xl font-bold text-slate-900">배포게시판</h2>
           <p className="mt-1 text-sm text-slate-500">
             배포 이력과 상태를 확인할 수 있습니다. 작성은 관리자만 가능합니다.
@@ -146,7 +149,7 @@ function ReleaseList() {
         {isAdmin && (
           <Link
             to="/releases/new"
-            className="inline-flex items-center gap-1.5 rounded-lg bg-primary-600 px-3 py-2 text-sm font-medium text-white hover:bg-primary-700"
+            className="ml-auto inline-flex items-center gap-1.5 rounded-lg bg-primary-600 px-3 py-2 text-sm font-medium text-white hover:bg-primary-700"
           >
             <Plus className="h-4 w-4" />
             배포 등록
@@ -559,8 +562,8 @@ function ReleaseDetail() {
 
 export default function ReleasePage() {
   return (
-    <div className="min-h-dvh bg-slate-50">
-      <Header />
+    <AppPageShell title="게시판">
+      <BoardSectionTabs />
       <Routes>
         <Route index element={<ReleaseList />} />
         <Route path="new" element={<ReleaseEditor mode="create" />} />
@@ -568,6 +571,6 @@ export default function ReleasePage() {
         <Route path=":id/edit" element={<ReleaseEditor mode="edit" />} />
         <Route path="*" element={<Navigate to="/releases" replace />} />
       </Routes>
-    </div>
+    </AppPageShell>
   );
 }

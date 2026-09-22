@@ -1,3 +1,5 @@
+// 2026-09-23 로고를 최상단 중앙에 배치
+// 2026-09-22 게시판 통합 네비 (고객/배포는 페이지 탭)
 // 2026-09-01 모바일 헤더: 햄버거 메뉴·여행 목록 버튼·컴팩트 액션
 // 2026-09-04 다크/라이트 전환 버튼
 // 2026-09-07 헤더에 첨부 공식 로고 PNG 적용
@@ -56,8 +58,8 @@ export default function Header({
 
   return (
     <header className="safe-top relative z-30 shrink-0 border-b border-slate-200 bg-white px-3 py-2 sm:px-6 sm:py-3">
-      <div className="flex items-center justify-between gap-2">
-        <div className="flex min-w-0 items-center gap-2 sm:gap-6">
+      <div className="relative flex items-center justify-between gap-2">
+        <div className="flex min-w-0 flex-1 items-center gap-2 sm:gap-4">
           {onOpenPlans && (
             <button
               type="button"
@@ -68,14 +70,6 @@ export default function Header({
               <PanelLeft className="h-5 w-5" />
             </button>
           )}
-
-          <Link
-            to={isAuthenticated ? '/dashboard' : '/'}
-            className="flex min-w-0 items-center"
-            aria-label="plan-go 홈"
-          >
-            <BrandLogo titleAs="h1" />
-          </Link>
 
           <nav className="hidden items-center gap-1 lg:flex">
             {isAuthenticated && (
@@ -93,26 +87,36 @@ export default function Header({
               <Megaphone className="h-4 w-4" />
               공지사항
             </Link>
-            <Link
-              to="/releases"
-              className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-50"
-            >
-              <Rocket className="h-4 w-4" />
-              배포게시판
-            </Link>
+            {!isAuthenticated && (
+              <Link
+                to="/releases"
+                className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-50"
+              >
+                <Rocket className="h-4 w-4" />
+                배포게시판
+              </Link>
+            )}
             {isAuthenticated && (
               <Link
                 to="/board"
                 className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium text-primary-700 hover:bg-primary-50"
               >
                 <MessageSquareText className="h-4 w-4" />
-                고객게시판
+                게시판
               </Link>
             )}
           </nav>
         </div>
 
-        <div className="flex shrink-0 items-center gap-1.5 sm:gap-3">
+        <Link
+          to={isAuthenticated ? '/dashboard' : '/'}
+          className="pointer-events-auto absolute left-1/2 top-1/2 z-10 -translate-x-1/2 -translate-y-1/2"
+          aria-label="plan-go 홈"
+        >
+          <BrandLogo size="sm" align="center" titleAs="h1" />
+        </Link>
+
+        <div className="flex min-w-0 flex-1 shrink-0 items-center justify-end gap-1.5 sm:gap-3">
           <ThemeToggle compact />
           {roleLabel && (
             <span className="hidden rounded-full bg-slate-100 px-2.5 py-1 text-xs text-slate-600 sm:inline">
@@ -237,14 +241,16 @@ export default function Header({
                 <Megaphone className="h-4 w-4" />
                 공지사항
               </Link>
-              <Link
-                to="/releases"
-                onClick={closeNav}
-                className="flex items-center gap-2 rounded-lg px-3 py-3 text-sm text-slate-700 hover:bg-slate-50"
-              >
-                <Rocket className="h-4 w-4" />
-                배포게시판
-              </Link>
+              {!isAuthenticated && (
+                <Link
+                  to="/releases"
+                  onClick={closeNav}
+                  className="flex items-center gap-2 rounded-lg px-3 py-3 text-sm text-slate-700 hover:bg-slate-50"
+                >
+                  <Rocket className="h-4 w-4" />
+                  배포게시판
+                </Link>
+              )}
               {isAuthenticated && (
                 <Link
                   to="/board"
@@ -252,7 +258,7 @@ export default function Header({
                   className="flex items-center gap-2 rounded-lg px-3 py-3 text-sm font-medium text-primary-700 hover:bg-primary-50"
                 >
                   <MessageSquareText className="h-4 w-4" />
-                  고객게시판
+                  게시판
                 </Link>
               )}
               {onInvite && (

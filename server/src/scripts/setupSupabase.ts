@@ -118,7 +118,7 @@ const importJson = async (): Promise<void> => {
             place.address ?? '',
             place.lat,
             place.lng,
-            place.category ?? 'other',
+            place.category ?? 'attraction',
             place.rating ?? null,
             place.photoUrl ?? null,
             place.memo ?? null,

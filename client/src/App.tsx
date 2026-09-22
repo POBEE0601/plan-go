@@ -5,6 +5,7 @@ import { useEffect, useLayoutEffect } from 'react';
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import { Loader2 } from 'lucide-react';
 import ProtectedRoute from './components/ProtectedRoute';
+import BrandLogo from './components/BrandLogo';
 import HomePage from './pages/HomePage';
 import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
@@ -25,8 +26,13 @@ function AppRoutes() {
 
   if (isLoading) {
     return (
-      <div className="flex min-h-dvh items-center justify-center bg-slate-50 dark:bg-slate-950">
-        <Loader2 className="h-8 w-8 animate-spin text-primary-600" />
+      <div className="flex min-h-dvh flex-col bg-slate-50 dark:bg-slate-950">
+        <header className="flex h-14 shrink-0 items-center justify-center">
+          <BrandLogo size="sm" align="center" />
+        </header>
+        <div className="flex flex-1 items-center justify-center">
+          <Loader2 className="h-8 w-8 animate-spin text-primary-600" />
+        </div>
       </div>
     );
   }

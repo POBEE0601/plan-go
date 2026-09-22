@@ -1,9 +1,10 @@
+// 2026-09-23 최상단 중앙 로고
 // 2026-09-01 모바일 여백 조정
 // 2026-09-07 공식 로고 컴포넌트 적용
 import { useState } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { AlertCircle, Loader2, LogIn } from 'lucide-react';
-import BrandLogo from '../components/BrandLogo';
+import PageBrandBar from '../components/PageBrandBar';
 import { useAuthStore } from '../store/useAuthStore';
 
 export default function LoginPage() {
@@ -32,17 +33,12 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="flex min-h-dvh items-center justify-center bg-gradient-to-b from-primary-50 to-slate-50 px-4">
+    <div className="flex min-h-dvh flex-col bg-gradient-to-b from-primary-50 to-slate-50">
+      <PageBrandBar />
+      <div className="flex flex-1 items-center justify-center px-4 py-10">
       <div className="w-full max-w-md">
-        <div className="mb-8 text-center">
-          <Link
-            to="/"
-            className="inline-flex justify-center"
-            aria-label="plan-go 홈"
-          >
-            <BrandLogo size="lg" />
-          </Link>
-          <p className="mt-2 text-sm text-slate-500">계정에 로그인하세요</p>
+        <div className="mb-6 text-center">
+          <p className="text-sm text-slate-500">계정에 로그인하세요</p>
         </div>
 
         <form
@@ -111,6 +107,7 @@ export default function LoginPage() {
             </Link>
           </p>
         </form>
+      </div>
       </div>
     </div>
   );

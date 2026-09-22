@@ -1,10 +1,11 @@
+// 2026-09-23 최상단 중앙 로고
 // 2026-09-01 모바일 여백 조정
 // 2026-08-31 초대 수락 페이지
 // 2026-09-07 공식 로고 컴포넌트 적용
 import { useEffect, useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import { AlertCircle, Loader2, UserPlus } from 'lucide-react';
-import BrandLogo from '../components/BrandLogo';
+import PageBrandBar from '../components/PageBrandBar';
 import { useAuthStore } from '../store/useAuthStore';
 import { travelApi } from '../utils/api';
 import type { InvitePreview } from '../types/travel';
@@ -49,23 +50,20 @@ export default function InvitePage() {
 
   if (loading || authLoading) {
     return (
-      <div className="flex min-h-dvh items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-primary-600" />
+      <div className="flex min-h-dvh flex-col">
+        <PageBrandBar />
+        <div className="flex flex-1 items-center justify-center">
+          <Loader2 className="h-8 w-8 animate-spin text-primary-600" />
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="flex min-h-dvh items-center justify-center bg-gradient-to-b from-primary-50 to-slate-50 px-4">
+    <div className="flex min-h-dvh flex-col bg-gradient-to-b from-primary-50 to-slate-50">
+      <PageBrandBar />
+      <div className="flex flex-1 items-center justify-center px-4 py-10">
       <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-8">
-        <Link
-          to="/"
-          className="mb-6 inline-flex items-center"
-          aria-label="plan-go 홈"
-        >
-          <BrandLogo size="md" />
-        </Link>
-
         <h1 className="mb-2 flex items-center gap-2 text-xl font-bold text-slate-800">
           <UserPlus className="h-5 w-5 text-primary-600" />
           여행 일정 초대
@@ -109,6 +107,7 @@ export default function InvitePage() {
             </button>
           </>
         )}
+      </div>
       </div>
     </div>
   );

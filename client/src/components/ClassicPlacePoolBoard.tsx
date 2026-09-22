@@ -1,3 +1,5 @@
+// 2026-09-22 일정 카드 첫 줄에 길찾기·메모 미리보기
+// 2026-09-22 목록형 카드에 카테고리·핀 색·소개
 // 2026-09-07 일차 카드 우측 메모 버튼
 // 2026-09-04 장기간 여행: 전 일차 버튼 그리드 → 어제/내일+드롭다운
 // 2026-09-01 장소 풀 기본 접힘
@@ -26,7 +28,7 @@ import {
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { Fragment, useEffect, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
   CalendarDays,
   ChevronDown,
@@ -42,12 +44,13 @@ import {
 import { useTravelStore } from '../store/useTravelStore';
 import { usePlanUiStore } from '../store/usePlanUiStore';
 import {
-  CATEGORY_ORDER,
   categoryBadge,
   categoryEmoji,
   categoryLabel,
   getDateForDay,
   getDayCount,
+  planCategoryIds,
+  resolvePinColor,
 } from '../utils/days';
 import { briefTypeLabels } from '../utils/placeBrief';
 import type { DayAssignment, Place, PlaceCategory } from '../types/travel';
@@ -56,6 +59,8 @@ import DayTimelineMap from './DayTimelineMap';
 import NearbyHospitalButton from './NearbyHospitalButton';
 import DayMoveControl from './DayMoveControl';
 import { AssignmentMemoButton } from './AssignmentMemoModal';
+import PlaceMetaEditor from './PlaceMetaEditor';
+import AssignmentPeekActions from './AssignmentPeekActions';
 
 interface PlacePoolBoardProps {
   canWrite: boolean;
@@ -66,19 +71,68 @@ function PlaceCardContent({
   compact,
   pin,
   assignment,
+  nameActions,
+  onNameClick,
 }: {
   place: Place;
   compact?: boolean;
   pin?: number;
   assignment?: DayAssignment;
+  nameActions?: ReactNode;
+  onNameClick?: () => void;
 }) {
   const isDayCard = pin != null;
   const typeLabels = isDayCard ? briefTypeLabels(place.types) : [];
 
+  const details = (
+    <>
+      {place.memo && (
+        <p className="mt-0.5 h-4 truncate text-[11px] leading-4 text-slate-400">
+          {place.memo}
+        </p>
+      )}
+      {!compact && place.address && (
+        <p className="mt-0.5 line-clamp-2 text-[11px] leading-snug text-slate-500">
+          {place.address}
+        </p>
+      )}
+      <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[10px] text-slate-500">
+        <span className="rounded bg-slate-100 px-1.5 py-0.5">
+          {categoryBadge(place.category)}
+        </span>
+        {typeLabels.map((label) => (
+          <span
+            key={label}
+            className="rounded bg-slate-50 px-1.5 py-0.5 text-slate-500"
+          >
+            {label}
+          </span>
+        ))}
+        {place.rating != null && (
+          <span className="flex items-center gap-0.5">
+            <Star className="h-2.5 w-2.5 fill-amber-400 text-amber-400" />
+            {place.rating}
+          </span>
+        )}
+      </div>
+      {!compact && isDayCard && assignment?.time && (
+        <p className="mt-1 flex items-center gap-1 text-[11px] text-slate-500">
+          <Clock className="h-3 w-3" />
+          {assignment.time}
+        </p>
+      )}
+    </>
+  );
+
   return (
     <div className="flex min-w-0 flex-1 items-start gap-2">
       {pin != null ? (
-        <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary-600 text-[11px] font-bold text-white">
+        <span
+          className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[11px] font-bold text-white"
+          style={{
+            backgroundColor: resolvePinColor(place.category, place.pinColor),
+          }}
+        >
           {pin}
         </span>
       ) : (
@@ -100,40 +154,34 @@ function PlaceCardContent({
         />
       )}
       <div className="min-w-0 flex-1">
-        <p
-          className={`truncate font-medium text-slate-800 ${compact ? 'text-sm' : ''}`}
-        >
-          {place.name}
-        </p>
-        {!compact && place.address && (
-          <p className="mt-0.5 line-clamp-2 text-[11px] leading-snug text-slate-500">
-            {place.address}
-          </p>
-        )}
-        <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[10px] text-slate-500">
-          <span className="rounded bg-slate-100 px-1.5 py-0.5">
-            {categoryBadge(place.category)}
-          </span>
-          {typeLabels.map((label) => (
-            <span
-              key={label}
-              className="rounded bg-slate-50 px-1.5 py-0.5 text-slate-500"
+        <div className="flex min-w-0 items-center gap-1">
+          {onNameClick ? (
+            <button
+              type="button"
+              onClick={onNameClick}
+              className={`min-w-0 flex-1 truncate text-left font-medium text-slate-800 ${
+                compact ? 'text-sm' : ''
+              }`}
             >
-              {label}
-            </span>
-          ))}
-          {place.rating != null && (
-            <span className="flex items-center gap-0.5">
-              <Star className="h-2.5 w-2.5 fill-amber-400 text-amber-400" />
-              {place.rating}
-            </span>
+              {place.name}
+            </button>
+          ) : (
+            <p
+              className={`min-w-0 flex-1 truncate font-medium text-slate-800 ${
+                compact ? 'text-sm' : ''
+              }`}
+            >
+              {place.name}
+            </p>
           )}
+          {nameActions}
         </div>
-        {!compact && isDayCard && assignment?.time && (
-          <p className="mt-1 flex items-center gap-1 text-[11px] text-slate-500">
-            <Clock className="h-3 w-3" />
-            {assignment.time}
-          </p>
+        {onNameClick ? (
+          <button type="button" onClick={onNameClick} className="w-full text-left">
+            {details}
+          </button>
+        ) : (
+          details
         )}
       </div>
     </div>
@@ -182,6 +230,7 @@ function SortableAssignment({
       className={`group relative rounded-lg border bg-white p-2 pb-8 shadow-sm ${
         selected ? 'border-primary-400 ring-1 ring-primary-200' : 'border-slate-200'
       }`}
+      data-assignment-id={assignment.id}
     >
       <div className="flex items-start gap-1">
         {canWrite && (
@@ -194,13 +243,20 @@ function SortableAssignment({
             <GripVertical className="h-4 w-4" />
           </button>
         )}
-        <button type="button" onClick={onFocus} className="min-w-0 flex-1 text-left">
+        <div className="min-w-0 flex-1">
           <PlaceCardContent
             place={place}
             pin={pin}
             assignment={assignment}
+            onNameClick={onFocus}
+            nameActions={
+              <AssignmentPeekActions place={place} memo={assignment.memo} />
+            }
           />
-        </button>
+          <div className="mt-1 pl-8">
+            <PlaceMetaEditor place={place} canWrite={canWrite} />
+          </div>
+        </div>
         <AssignmentMemoButton
           assignmentId={assignment.id}
           placeName={place.name}
@@ -328,18 +384,50 @@ function DayWorkPanel({
   });
   const { removeFromDay, moveAssignment } = useTravelStore();
   const ids = assignments.map((a) => a.id);
-  const [focusPlaceId, setFocusPlaceId] = useState<string | null>(null);
+  const selectedAssignmentId = usePlanUiStore((s) => s.selectedAssignmentId);
+  const selectAssignment = usePlanUiStore((s) => s.selectAssignment);
+  const listRef = useRef<HTMLDivElement | null>(null);
+  const focusPlaceId =
+    assignments.find((a) => a.id === selectedAssignmentId)?.placeId ?? null;
 
   const orderedPlaces = assignments
     .map((a) => placesById[a.placeId])
     .filter((p): p is Place => Boolean(p));
 
-  const focusAssignment = (placeId: string, assignmentId: string) => {
-    setFocusPlaceId(placeId);
+  const focusAssignment = (assignmentId: string) => {
+    selectAssignment(assignmentId, { soft: true });
     document
       .getElementById(`day-place-${assignmentId}`)
       ?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   };
+
+  useEffect(() => {
+    if (!assignments.length) return;
+    const inDay = assignments.some((a) => a.id === selectedAssignmentId);
+    if (!inDay) selectAssignment(assignments[0].id, { soft: true });
+  }, [assignments, selectedAssignmentId, selectAssignment]);
+
+  useEffect(() => {
+    const root = listRef.current;
+    if (!root) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const visible = entries
+          .filter((e) => e.isIntersecting)
+          .sort(
+            (a, b) => a.boundingClientRect.top - b.boundingClientRect.top,
+          );
+        const id = (visible[0]?.target as HTMLElement | undefined)?.dataset
+          .assignmentId;
+        if (id) selectAssignment(id, { soft: true });
+      },
+      { root, rootMargin: '-8% 0px -55% 0px', threshold: 0.12 },
+    );
+    root.querySelectorAll('[data-assignment-id]').forEach((el) => {
+      observer.observe(el);
+    });
+    return () => observer.disconnect();
+  }, [assignments, selectAssignment]);
 
   return (
     <div
@@ -352,7 +440,10 @@ function DayWorkPanel({
     >
       <SortableContext items={ids} strategy={verticalListSortingStrategy}>
         <div className="flex min-h-0 min-w-0 flex-1 flex-col order-2 lg:order-1">
-          <div className="flex flex-1 flex-col gap-2 overflow-y-auto p-3">
+          <div
+            ref={listRef}
+            className="flex flex-1 flex-col gap-2 overflow-y-auto p-3"
+          >
             {assignments.length === 0 && (
               <p className="py-10 text-center text-sm text-slate-400">
                 {canWrite
@@ -381,10 +472,10 @@ function DayWorkPanel({
                     pin={index + 1}
                     canWrite={canWrite}
                     dayCount={dayCount}
-                    selected={focusPlaceId === place.id}
+                    selected={selectedAssignmentId === a.id}
                     onRemove={() => removeFromDay(a.id)}
                     onMove={(day) => moveAssignment(a.id, day)}
-                    onFocus={() => setFocusPlaceId(place.id)}
+                    onFocus={() => selectAssignment(a.id, { soft: true })}
                   />
                 </Fragment>
               );
@@ -398,8 +489,8 @@ function DayWorkPanel({
           focusPlaceId={focusPlaceId}
           onSelectPlace={(placeId) => {
             const assignment = assignments.find((a) => a.placeId === placeId);
-            if (assignment) focusAssignment(placeId, assignment.id);
-            else setFocusPlaceId(placeId);
+            if (assignment) focusAssignment(assignment.id);
+            else selectAssignment(null, { soft: true });
           }}
           showHeader
         />
@@ -594,7 +685,7 @@ export default function ClassicPlacePoolBoard({ canWrite }: PlacePoolBoardProps)
             >
               전체
             </button>
-            {CATEGORY_ORDER.map((cat) => {
+            {planCategoryIds(selectedPlan.customCategories).map((cat) => {
               const count = categoryCounts[cat] ?? 0;
               if (!count) return null;
               return (

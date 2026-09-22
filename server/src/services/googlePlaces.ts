@@ -1,3 +1,4 @@
+// 2026-09-22 장소 카테고리 자동 분류 갱신
 // 2026-08-31 Google Places 검색·상세 조회 서비스
 import type {
   CitySearchResult,
@@ -9,12 +10,17 @@ import type {
 const getApiKey = (): string => process.env.GOOGLE_MAPS_API_KEY ?? '';
 
 const mapCategory = (types: string[] = []): PlaceCategory => {
+  if (types.some((t) => /bakery|dessert|ice_cream|confectionery|meal_takeaway/.test(t)))
+    return 'dessert';
+  if (types.some((t) => /cafe|coffee|tea/.test(t))) return 'cafe';
   if (types.some((t) => /restaurant|food|meal/.test(t))) return 'restaurant';
-  if (types.some((t) => /cafe|bakery|bar/.test(t))) return 'cafe';
-  if (types.some((t) => /lodging|hotel/.test(t))) return 'hotel';
-  if (types.some((t) => /tourist|museum|park|zoo|aquarium|attraction/.test(t)))
-    return 'attraction';
-  return 'other';
+  if (
+    types.some((t) =>
+      /store|shop|mall|clothing|supermarket|department|convenience/.test(t),
+    )
+  )
+    return 'shopping';
+  return 'attraction';
 };
 
 const photoUrl = (photoReference?: string): string | undefined => {

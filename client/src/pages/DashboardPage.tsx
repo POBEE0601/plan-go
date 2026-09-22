@@ -1,3 +1,7 @@
+// 2026-09-23 일정 검색은 지도 돋보기로, 상단 검색은 저장만
+// 2026-09-22 상단 메뉴명 제거, 남는 폭에 기간·지역·환율
+// 2026-09-22 여행 홈/일정 제목에 준비·비상 배치
+// 2026-09-22 모바일 하단 홈바 + 탭별 전용 화면
 // 2026-09-14 모바일 셸 높이를 svh로 맞춰 하단 버튼이 잘리지 않게
 // 2026-09-01 대시보드: 여행지 환율 표시
 // 2026-09-01 일자 아코디언·단일 작업영역
@@ -8,9 +12,9 @@
 // 2026-09-04 모바일은 목록형 대신 지도형(바텀시트)만 사용
 // 2026-09-04 여행 준비 체크리스트 진입
 import { useEffect, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   AlertCircle,
-  ClipboardList,
   Compass,
   LayoutList,
   Loader2,
@@ -26,6 +30,13 @@ import PlacePoolBoard from '../components/PlacePoolBoard';
 import ClassicPlacePoolBoard from '../components/ClassicPlacePoolBoard';
 import InviteModal from '../components/InviteModal';
 import PrepBoardModal from '../components/PrepBoardModal';
+import EmergencyModal from '../components/EmergencyModal';
+import MobileTabBar from '../components/MobileTabBar';
+import MobileTopBar from '../components/MobileTopBar';
+import MobileToolsPanel from '../components/MobileToolsPanel';
+import SavedPlacesPanel from '../components/SavedPlacesPanel';
+import PlanQuickActions from '../components/PlanQuickActions';
+import { parseDashboardTab } from '../utils/mobileTabs';
 import { useTravelStore } from '../store/useTravelStore';
 import { usePlanUiStore } from '../store/usePlanUiStore';
 import ExchangeRateBadge from '../components/ExchangeRateBadge';
@@ -46,13 +57,17 @@ export default function DashboardPage() {
 
   const [inviteOpen, setInviteOpen] = useState(false);
   const [prepOpen, setPrepOpen] = useState(false);
+  const [emergencyOpen, setEmergencyOpen] = useState(false);
   // 목록형에서만 사용하는 우측 지도 패널
   const [mapVisible, setMapVisible] = useState(false);
   // 모바일에서만 사용하는 여행 목록 드로어
   const [plansOpen, setPlansOpen] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
   const [isDesktop, setIsDesktop] = useState(
     () => window.matchMedia('(min-width: 1024px)').matches,
   );
+  const [searchParams] = useSearchParams();
+  const mobileTab = parseDashboardTab(searchParams.get('tab'));
   const canWrite = myRole === 'owner' || myRole === 'editor';
   const isOwner = myRole === 'owner';
   // 좁은 화면에서는 큰 카드 목록형 대신 지도+시트만 사용
@@ -82,19 +97,68 @@ export default function DashboardPage() {
     };
   }, [plansOpen]);
 
+  useEffect(() => {
+    setSearchOpen(false);
+  }, [mobileTab]);
+
+  const mobileTitle = selectedPlan?.title ?? '내 여행';
+
   return (
     <div className="flex h-svh min-h-0 flex-col overflow-hidden">
-      <Header
-        onInvite={isOwner ? () => setInviteOpen(true) : undefined}
-        onOpenPlans={() => setPlansOpen(true)}
-        roleLabel={
-          myRole === 'owner'
-            ? '소유자'
-            : myRole === 'editor'
-              ? '쓰기'
-              : myRole === 'viewer'
-                ? '읽기'
-                : undefined
+      <div className="hidden lg:block">
+        <Header
+          onInvite={isOwner ? () => setInviteOpen(true) : undefined}
+          onOpenPlans={() => setPlansOpen(true)}
+          roleLabel={
+            myRole === 'owner'
+              ? '소유자'
+              : myRole === 'editor'
+                ? '쓰기'
+                : myRole === 'viewer'
+                  ? '읽기'
+                  : undefined
+          }
+        />
+      </div>
+      <MobileTopBar
+        title={mobileTitle}
+        meta={
+          selectedPlan ? (
+            <>
+              {selectedPlan.regionName ? (
+                <span className="shrink-0 text-primary-600">
+                  {selectedPlan.regionName}
+                </span>
+              ) : null}
+              <span className="shrink-0">
+                {selectedPlan.startDate} ~ {selectedPlan.endDate}
+              </span>
+              <ExchangeRateBadge
+                lat={selectedPlan.regionLat}
+                lng={selectedPlan.regionLng}
+                placeName={[selectedPlan.regionName, selectedPlan.title]
+                  .filter(Boolean)
+                  .join(' ')}
+              />
+            </>
+          ) : undefined
+        }
+        onBack={() => setPlansOpen(true)}
+        backLabel="여행 계획 목록 열기"
+        onSearch={
+          selectedPlan && mobileTab === 'saved'
+            ? () => setSearchOpen((v) => !v)
+            : undefined
+        }
+        searchActive={searchOpen}
+        titleExtra={
+          selectedPlan && (mobileTab === 'home' || mobileTab === 'schedule') ? (
+            <PlanQuickActions
+              compact
+              onPrep={() => setPrepOpen(true)}
+              onEmergency={() => setEmergencyOpen(true)}
+            />
+          ) : undefined
         }
       />
 
@@ -118,7 +182,7 @@ export default function DashboardPage() {
         {plansOpen && (
           <button
             type="button"
-            className="fixed inset-0 z-30 bg-black/40 lg:hidden"
+            className="fixed inset-0 z-40 bg-black/40 lg:hidden"
             aria-label="여행 계획 닫기"
             onClick={() => setPlansOpen(false)}
           />
@@ -131,9 +195,16 @@ export default function DashboardPage() {
               <Loader2 className="mb-3 h-10 w-10 animate-spin text-primary-500" />
               <p className="text-sm">여행 계획을 불러오는 중...</p>
             </div>
+          ) : !isDesktop && mobileTab === 'tools' ? (
+            <div className="min-h-0 flex-1 overflow-hidden">
+              <MobileToolsPanel
+                canInvite={isOwner}
+                onInvite={() => setInviteOpen(true)}
+              />
+            </div>
           ) : selectedPlan ? (
             <>
-              <div className="flex items-center justify-between gap-2 border-b border-slate-200 bg-white px-3 py-2 sm:px-6">
+              <div className="hidden items-center justify-between gap-2 border-b border-slate-200 bg-white px-3 py-2 lg:flex sm:px-6">
                 <div className="min-w-0">
                   <h2 className="truncate text-base font-bold text-slate-800 sm:text-lg">
                     {selectedPlan.title}
@@ -165,23 +236,10 @@ export default function DashboardPage() {
                   </p>
                 </div>
                 <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setPrepOpen(true)}
-                    className="flex shrink-0 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50 sm:px-3"
-                  >
-                    <ClipboardList className="h-4 w-4 text-primary-600" />
-                    <span className="hidden sm:inline">준비</span>
-                    {(selectedPlan.prepItems ?? []).length > 0 && (
-                      <span className="rounded bg-slate-100 px-1.5 text-[11px] text-slate-500">
-                        {
-                          (selectedPlan.prepItems ?? []).filter((i) => i.checked)
-                            .length
-                        }
-                        /{(selectedPlan.prepItems ?? []).length}
-                      </span>
-                    )}
-                  </button>
+                  <PlanQuickActions
+                    onPrep={() => setPrepOpen(true)}
+                    onEmergency={() => setEmergencyOpen(true)}
+                  />
                   <div className="hidden rounded-lg border border-slate-200 bg-slate-50 p-0.5 lg:flex">
                     <button
                       type="button"
@@ -240,9 +298,30 @@ export default function DashboardPage() {
                     )}
                   </div>
                 </>
-              ) : (
+              ) : isDesktop ? (
                 <div className="relative min-h-0 flex-1 overflow-hidden">
                   <PlacePoolBoard canWrite={canWrite} />
+                </div>
+              ) : mobileTab === 'saved' ? (
+                <div className="min-h-0 flex-1 overflow-hidden">
+                  <SavedPlacesPanel
+                    canWrite={canWrite}
+                    searchOpen={searchOpen}
+                  />
+                </div>
+              ) : mobileTab === 'tools' ? (
+                <div className="min-h-0 flex-1 overflow-hidden">
+                  <MobileToolsPanel
+                    canInvite={isOwner}
+                    onInvite={() => setInviteOpen(true)}
+                  />
+                </div>
+              ) : (
+                <div className="relative min-h-0 flex-1 overflow-hidden">
+                  <PlacePoolBoard
+                    canWrite={canWrite}
+                    mobilePane={mobileTab === 'schedule' ? 'schedule' : 'map'}
+                  />
                 </div>
               )}
             </>
@@ -264,11 +343,23 @@ export default function DashboardPage() {
         </main>
       </div>
 
+      <MobileTabBar />
+
       <InviteModal open={inviteOpen} onClose={() => setInviteOpen(false)} />
       <PrepBoardModal
         open={prepOpen}
         canWrite={canWrite}
         onClose={() => setPrepOpen(false)}
+      />
+      <EmergencyModal
+        open={emergencyOpen}
+        onClose={() => setEmergencyOpen(false)}
+        regionName={selectedPlan?.regionName || selectedPlan?.title}
+        lat={selectedPlan?.regionLat ?? selectedPlan?.places?.[0]?.lat}
+        lng={selectedPlan?.regionLng ?? selectedPlan?.places?.[0]?.lng}
+        placeName={[selectedPlan?.regionName, selectedPlan?.title]
+          .filter(Boolean)
+          .join(' ')}
       />
     </div>
   );

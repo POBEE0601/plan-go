@@ -1,3 +1,4 @@
+// 2026-09-22 인스펙터에서 카테고리·핀 색·소개 편집
 // 2026-09-07 모바일 메모 버튼이 시트 하단에 잘리지 않도록
 // 2026-09-07 모바일 인라인 메모·PC 팝업 메모
 // 2026-09-04 일차 이동을 DayMoveControl로 통일
@@ -11,8 +12,9 @@ import AssignmentMemoModal from './AssignmentMemoModal';
 import { useTravelStore } from '../store/useTravelStore';
 import { usePlanUiStore } from '../store/usePlanUiStore';
 import { briefTypeLabels } from '../utils/placeBrief';
-import { categoryBadge } from '../utils/days';
+import { categoryBadge, resolvePinColor } from '../utils/days';
 import type { DayAssignment, Place } from '../types/travel';
+import PlaceMetaEditor from './PlaceMetaEditor';
 
 interface PlaceInspectorProps {
   assignment: DayAssignment;
@@ -73,6 +75,12 @@ export default function PlaceInspector({
             </p>
           )}
           <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-[10px] text-slate-500">
+            <span
+              className="h-2.5 w-2.5 rounded-full"
+              style={{
+                backgroundColor: resolvePinColor(place.category, place.pinColor),
+              }}
+            />
             <span className="rounded bg-slate-100 px-1.5 py-0.5">
               {categoryBadge(place.category)}
             </span>
@@ -100,6 +108,10 @@ export default function PlaceInspector({
         >
           <X className="h-4 w-4" />
         </button>
+      </div>
+
+      <div className="shrink-0 border-t border-slate-100 px-3 py-2">
+        <PlaceMetaEditor place={place} canWrite={canWrite} />
       </div>
 
       {assignment.time && (

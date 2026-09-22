@@ -1,9 +1,10 @@
+// 2026-09-23 최상단 중앙 로고
 // 2026-09-01 모바일 여백 조정
 // 2026-09-07 공식 로고 컴포넌트 적용
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { AlertCircle, Loader2, UserPlus } from 'lucide-react';
-import BrandLogo from '../components/BrandLogo';
+import PageBrandBar from '../components/PageBrandBar';
 import { useAuthStore } from '../store/useAuthStore';
 
 export default function RegisterPage() {
@@ -46,17 +47,12 @@ export default function RegisterPage() {
   const displayError = localError || error;
 
   return (
-    <div className="flex min-h-dvh items-center justify-center bg-gradient-to-b from-primary-50 to-slate-50 px-4 py-10">
+    <div className="flex min-h-dvh flex-col bg-gradient-to-b from-primary-50 to-slate-50">
+      <PageBrandBar />
+      <div className="flex flex-1 items-center justify-center px-4 py-10">
       <div className="w-full max-w-md">
-        <div className="mb-8 text-center">
-          <Link
-            to="/"
-            className="inline-flex justify-center"
-            aria-label="plan-go 홈"
-          >
-            <BrandLogo size="lg" />
-          </Link>
-          <p className="mt-2 text-sm text-slate-500">
+        <div className="mb-6 text-center">
+          <p className="text-sm text-slate-500">
             plan-go와 함께 여행을 시작하세요
           </p>
         </div>
@@ -156,6 +152,7 @@ export default function RegisterPage() {
             </Link>
           </p>
         </form>
+      </div>
       </div>
     </div>
   );

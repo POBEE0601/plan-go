@@ -1,3 +1,5 @@
+// 2026-09-23 일정 검색·지도 돋보기·하단 시트 드래그
+// 2026-09-22 모바일 홈바: 지도/일정 전용 화면
 // 2026-09-15 일차 헤더 차량 합산 시간 제거
 // 2026-09-14 모바일 지도 전체 보기: 검색바·목록 숨김
 // 2026-09-07 장소 상세 시트가 메모 영역을 채우도록
@@ -22,7 +24,7 @@ import {
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { Fragment, useEffect, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import {
   GripVertical,
   List,
@@ -36,12 +38,13 @@ import {
 import { useTravelStore } from '../store/useTravelStore';
 import { usePlanUiStore } from '../store/usePlanUiStore';
 import {
-  CATEGORY_ORDER,
   categoryBadge,
   categoryEmoji,
   categoryLabel,
   getDateForDay,
   getDayCount,
+  planCategoryIds,
+  resolvePinColor,
 } from '../utils/days';
 import type { DayAssignment, Place, PlaceCategory } from '../types/travel';
 import TransitHint from './TransitHint';
@@ -49,13 +52,21 @@ import DayTimelineMap from './DayTimelineMap';
 import DayTabs from './DayTabs';
 import PlaceInspector from './PlaceInspector';
 import PlaceSearchBar from './PlaceSearchBar';
+import PlaceMetaEditor from './PlaceMetaEditor';
+import AssignmentPeekActions from './AssignmentPeekActions';
+import DayPlaceCarousel from './DayPlaceCarousel';
+import ResizablePlaceSheet from './ResizablePlaceSheet';
+import { useMapUiStore } from '../store/useMapUiStore';
 
 interface PlacePoolBoardProps {
   canWrite: boolean;
+  // 2026-09-22 모바일 홈바: 지도/일정 전용 화면
+  mobilePane?: 'map' | 'schedule';
 }
 
 // 2026-09-15 일차 헤더에서 차량 합산 시간 제거 (Directions 호출 절약)
 
+// 2026-09-22 첫 줄: 번호·장소명·현위치 길찾기·메모 미리보기
 function CompactAssignmentRow({
   assignment,
   place,
@@ -89,38 +100,46 @@ function CompactAssignmentRow({
       id={`day-place-${assignment.id}`}
       ref={setNodeRef}
       style={style}
-      className={`flex min-h-11 items-center gap-0.5 rounded-lg px-1 py-0.5 ${
+      className={`flex min-h-11 items-start gap-0.5 rounded-lg px-1 py-1 ${
         selected ? 'bg-primary-50 ring-1 ring-primary-200' : 'hover:bg-slate-50'
       }`}
+      data-assignment-id={assignment.id}
     >
       {canWrite && (
         <button
           type="button"
-          className="min-h-9 min-w-8 cursor-grab touch-none p-1 text-slate-300 active:cursor-grabbing"
+          className="mt-0.5 min-h-9 min-w-8 cursor-grab touch-none p-1 text-slate-300 active:cursor-grabbing"
           {...attributes}
           {...listeners}
         >
           <GripVertical className="h-3.5 w-3.5" />
         </button>
       )}
-      <button
-        type="button"
-        onClick={onFocus}
-        className="flex min-h-11 min-w-0 flex-1 items-center gap-2 py-1 text-left"
-      >
-        <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-primary-600 text-[10px] font-bold text-white">
-          {pin}
-        </span>
-        <span className="truncate text-sm font-medium text-slate-800">
-          {place.name}
-        </span>
-        <span
-          className="ml-auto shrink-0 text-sm"
-          title={categoryLabel(place.category)}
-        >
-          {categoryEmoji(place.category)}
-        </span>
-      </button>
+      <div className="min-w-0 flex-1">
+        <div className="flex min-h-9 min-w-0 items-center gap-1.5">
+          <button
+            type="button"
+            onClick={onFocus}
+            className="flex min-w-0 flex-1 items-center gap-2 text-left"
+          >
+            <span
+              className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] font-bold text-white"
+              style={{
+                backgroundColor: resolvePinColor(place.category, place.pinColor),
+              }}
+            >
+              {pin}
+            </span>
+            <span className="truncate text-sm font-medium text-slate-800">
+              {place.name}
+            </span>
+          </button>
+          <AssignmentPeekActions place={place} memo={assignment.memo} />
+        </div>
+        <div className="pl-7">
+          <PlaceMetaEditor place={place} canWrite={canWrite} />
+        </div>
+      </div>
     </div>
   );
 }
@@ -223,17 +242,49 @@ function CompactTimeline({
   const selectedAssignmentId = usePlanUiStore((s) => s.selectedAssignmentId);
   const selectAssignment = usePlanUiStore((s) => s.selectAssignment);
   const ids = assignments.map((a) => a.id);
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+
+  const setListRef = (node: HTMLDivElement | null) => {
+    setNodeRef(node);
+    scrollRef.current = node;
+  };
 
   useEffect(() => {
     if (!selectedAssignmentId) return;
-    document
-      .getElementById(`day-place-${selectedAssignmentId}`)
-      ?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    const el = document.getElementById(`day-place-${selectedAssignmentId}`);
+    const root = scrollRef.current;
+    if (!el || !root || !root.contains(el)) return;
+    const er = el.getBoundingClientRect();
+    const rr = root.getBoundingClientRect();
+    if (er.top >= rr.top + 8 && er.bottom <= rr.bottom - 8) return;
+    el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   }, [selectedAssignmentId]);
+
+  useEffect(() => {
+    const root = scrollRef.current;
+    if (!root) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const visible = entries
+          .filter((e) => e.isIntersecting)
+          .sort(
+            (a, b) => a.boundingClientRect.top - b.boundingClientRect.top,
+          );
+        const id = (visible[0]?.target as HTMLElement | undefined)?.dataset
+          .assignmentId;
+        if (id) selectAssignment(id, { soft: true });
+      },
+      { root, rootMargin: '-8% 0px -62% 0px', threshold: 0.15 },
+    );
+    root.querySelectorAll('[data-assignment-id]').forEach((el) => {
+      observer.observe(el);
+    });
+    return () => observer.disconnect();
+  }, [assignments, selectAssignment]);
 
   return (
     <div
-      ref={setNodeRef}
+      ref={setListRef}
       className={`min-h-0 flex-1 overflow-y-auto overscroll-contain px-2 py-1 pb-[max(1.5rem,env(safe-area-inset-bottom))] ${
         isOver ? 'bg-primary-50/70' : ''
       }`}
@@ -340,7 +391,7 @@ function PoolPanel({ canWrite }: { canWrite: boolean }) {
         >
           전체
         </button>
-        {CATEGORY_ORDER.map((cat) => {
+        {planCategoryIds(selectedPlan.customCategories).map((cat) => {
           const count = categoryCounts[cat] ?? 0;
           if (!count) return null;
           return (
@@ -392,9 +443,11 @@ function PoolPanel({ canWrite }: { canWrite: boolean }) {
 function TimelineChrome({
   canWrite,
   onMapFocus,
+  showPool = true,
 }: {
   canWrite: boolean;
   onMapFocus?: () => void;
+  showPool?: boolean;
 }) {
   const selectedPlan = useTravelStore((s) => s.selectedPlan);
   const { activeDay, poolOpen, togglePool } = usePlanUiStore();
@@ -405,7 +458,7 @@ function TimelineChrome({
     .sort((a, b) => a.order - b.order);
 
   return (
-    <div className="flex items-center gap-2 border-b border-slate-100 px-3 py-2">
+    <div className="flex shrink-0 items-center gap-2 border-b border-slate-100 px-3 py-2">
       <p className="min-w-0 flex-1 truncate text-sm font-semibold text-slate-700">
         {activeDay}일차
         <span className="ml-1 font-normal text-slate-400">
@@ -424,17 +477,19 @@ function TimelineChrome({
           지도
         </button>
       )}
-      <button
-        type="button"
-        onClick={togglePool}
-        className={`shrink-0 rounded-lg px-2 py-1 text-[11px] font-medium ${
-          poolOpen
-            ? 'bg-primary-600 text-white'
-            : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-        }`}
-      >
-        풀 {selectedPlan.places.length}
-      </button>
+      {showPool && (
+        <button
+          type="button"
+          onClick={togglePool}
+          className={`shrink-0 rounded-lg px-2 py-1 text-[11px] font-medium ${
+            poolOpen
+              ? 'bg-primary-600 text-white'
+              : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+          }`}
+        >
+          풀 {selectedPlan.places.length}
+        </button>
+      )}
       {!canWrite && (
         <span className="shrink-0 text-[10px] text-slate-400">읽기</span>
       )}
@@ -442,7 +497,10 @@ function TimelineChrome({
   );
 }
 
-export default function PlacePoolBoard({ canWrite }: PlacePoolBoardProps) {
+export default function PlacePoolBoard({
+  canWrite,
+  mobilePane,
+}: PlacePoolBoardProps) {
   const {
     selectedPlan,
     assignToDay,
@@ -463,6 +521,8 @@ export default function PlacePoolBoard({ canWrite }: PlacePoolBoardProps) {
   } = usePlanUiStore();
 
   const [activeId, setActiveId] = useState<string | null>(null);
+  // 2026-09-23 지도 좌측 돋보기로 검색바 토글 (기본 숨김)
+  const [mapSearchOpen, setMapSearchOpen] = useState(false);
   // 지도 전체 보기 중 검색바만 따로 다시 열기
   const [mapFocusSearch, setMapFocusSearch] = useState(false);
   // DevTools 모바일·주소창 때문에 레이아웃보다 시각 뷰포트가 짧을 때 하단 여백
@@ -477,6 +537,11 @@ export default function PlacePoolBoard({ canWrite }: PlacePoolBoardProps) {
     mq.addEventListener('change', onChange);
     return () => mq.removeEventListener('change', onChange);
   }, []);
+
+  useEffect(() => {
+    setMapSearchOpen(false);
+    useMapUiStore.getState().clearSearchResults();
+  }, [mobilePane]);
 
   useEffect(() => {
     if (sheetSnap !== 'collapsed') setMapFocusSearch(false);
@@ -547,11 +612,20 @@ export default function PlacePoolBoard({ canWrite }: PlacePoolBoardProps) {
   const onSelectMapPlace = (placeId: string) => {
     const assignment = assignments.find((a) => a.placeId === placeId);
     if (!assignment) return;
-    // 지도 전체 보기 중에는 시트를 펼치지 않고 핀만 강조
+    if (mobilePane === 'map' || mobilePane === 'schedule') {
+      selectAssignment(assignment.id, { soft: true });
+      return;
+    }
     selectAssignment(assignment.id, {
       keepSheet: !isDesktop && sheetSnap === 'collapsed',
     });
   };
+
+  useEffect(() => {
+    if (!assignments.length) return;
+    const inDay = assignments.some((a) => a.id === selectedAssignmentId);
+    if (!inDay) selectAssignment(assignments[0].id, { soft: true });
+  }, [assignments, selectedAssignmentId, selectAssignment]);
 
   if (!selectedPlan) return null;
 
@@ -688,6 +762,42 @@ export default function PlacePoolBoard({ canWrite }: PlacePoolBoardProps) {
     />
   );
 
+  const useMobileMap = !isDesktop && mobilePane === 'map';
+  const useMobileSchedule = !isDesktop && mobilePane === 'schedule';
+  const useMobilePlan = useMobileMap || useMobileSchedule;
+
+  const toggleMapSearch = () => {
+    setMapSearchOpen((open) => {
+      if (open) useMapUiStore.getState().clearSearchResults();
+      return !open;
+    });
+  };
+
+  const mapSearchOverlay = (
+    <div className="pointer-events-none absolute inset-x-0 top-0 z-30 p-3">
+      <div className="flex items-start gap-2">
+        <button
+          type="button"
+          onClick={toggleMapSearch}
+          className={`pointer-events-auto flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border shadow-sm ${
+            mapSearchOpen
+              ? 'border-primary-200 bg-primary-600 text-white'
+              : 'border-slate-200 bg-white/95 text-slate-700'
+          }`}
+          aria-label={mapSearchOpen ? '검색 닫기' : '장소 검색'}
+          aria-pressed={mapSearchOpen}
+        >
+          <Search className="h-5 w-5" strokeWidth={1.8} />
+        </button>
+        {mapSearchOpen && (
+          <div className="pointer-events-auto min-w-0 flex-1">
+            <PlaceSearchBar canWrite={canWrite} />
+          </div>
+        )}
+      </div>
+    </div>
+  );
+
   return (
     <DndContext
       sensors={sensors}
@@ -695,6 +805,59 @@ export default function PlacePoolBoard({ canWrite }: PlacePoolBoardProps) {
       onDragStart={handleDragStart}
       onDragEnd={handleDragEnd}
     >
+      {useMobilePlan ? (
+        <div className="relative flex h-full min-h-0 flex-col overflow-hidden bg-white">
+          <div className="relative min-h-0 flex-1 overflow-hidden">
+            <DayTimelineMap
+              places={orderedPlaces}
+              focusPlaceId={focusPlaceId}
+              onSelectPlace={onSelectMapPlace}
+              layoutKey={useMobileSchedule ? 'mob-schedule' : 'mob-map'}
+            />
+            {mapSearchOverlay}
+            <ResizablePlaceSheet
+              defaultRatio={useMobileSchedule ? 0.5 : 0.34}
+              minPx={useMobileSchedule ? 176 : 188}
+            >
+              <DayTabs canWrite={canWrite} />
+              {useMobileSchedule ? (
+                inspectorOpen && sheetInspector ? (
+                  <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+                    {sheetInspector}
+                  </div>
+                ) : (
+                  <>
+                    <TimelineChrome canWrite={canWrite} showPool={false} />
+                    <CompactTimeline
+                      dayIndex={activeDay}
+                      assignments={assignments}
+                      placesById={placesById}
+                      canWrite={canWrite}
+                    />
+                  </>
+                )
+              ) : (
+                <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+                  <div className="shrink-0">
+                    <DayPlaceCarousel
+                      assignments={assignments}
+                      placesById={placesById}
+                      selectedAssignmentId={selectedAssignmentId}
+                      onSelect={(id) => selectAssignment(id, { soft: true })}
+                    />
+                  </div>
+                  <CompactTimeline
+                    dayIndex={activeDay}
+                    assignments={assignments}
+                    placesById={placesById}
+                    canWrite={canWrite}
+                  />
+                </div>
+              )}
+            </ResizablePlaceSheet>
+          </div>
+        </div>
+      ) : (
       <div className="flex h-full min-h-0 flex-col overflow-hidden">
         <DayTabs canWrite={canWrite} />
 
@@ -810,6 +973,7 @@ export default function PlacePoolBoard({ canWrite }: PlacePoolBoardProps) {
           )}
         </div>
       </div>
+      )}
 
       <DragOverlay>
         {activePlace && (

@@ -1,3 +1,4 @@
+// 2026-09-23 최상단 중앙 로고
 // 2026-09-01 랜딩 모바일 네비게이션
 // 2026-09-04 로그아웃 후에도 다크 테마가 메인 전면에 맞게 유지
 // 2026-09-07 공식 로고 컴포넌트 적용
@@ -21,11 +22,16 @@ export default function HomePage() {
   return (
     <div className="min-h-dvh bg-gradient-to-b from-primary-50 via-white to-slate-50">
       <nav className="border-b border-slate-200/60 bg-white/80 backdrop-blur">
-        <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3 sm:px-6 sm:py-4">
-          <Link to="/" className="flex min-w-0 items-center" aria-label="plan-go 홈">
-            <BrandLogo size="md" />
+        <div className="relative mx-auto flex min-h-14 max-w-6xl items-center justify-between px-4 py-3 sm:px-6 sm:py-4">
+          <div className="hidden w-10 sm:block sm:w-0" />
+          <Link
+            to="/"
+            className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2"
+            aria-label="plan-go 홈"
+          >
+            <BrandLogo size="sm" align="center" />
           </Link>
-          <div className="hidden items-center gap-3 sm:flex">
+          <div className="hidden items-center gap-3 sm:ml-auto sm:flex">
             <ThemeToggle compact />
             <Link
               to="/notices"
@@ -53,7 +59,7 @@ export default function HomePage() {
               회원가입
             </Link>
           </div>
-          <div className="flex items-center gap-2 sm:hidden">
+          <div className="relative z-10 ml-auto flex items-center gap-2 sm:hidden">
             <ThemeToggle compact />
             <button
               type="button"

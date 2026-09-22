@@ -1,3 +1,4 @@
+// 2026-09-22 모바일 하단 홈바 셸
 // 2026-09-01 모바일 헤더 대응
 // 2026-08-31 공지사항 게시판 (비회원 조회, 관리자만 작성, 조회수)
 import { useEffect, useState } from 'react';
@@ -19,7 +20,7 @@ import {
   Trash2,
 } from 'lucide-react';
 import FilePreviewModal from '../components/FilePreviewModal';
-import Header from '../components/Header';
+import AppPageShell from '../components/AppPageShell';
 import { noticeApi } from '../utils/api';
 import { useAuthStore } from '../store/useAuthStore';
 import type { BoardAttachment } from '../types/board';
@@ -125,7 +126,7 @@ function NoticeList() {
   return (
     <div className="mx-auto max-w-3xl px-4 py-6">
       <div className="mb-5 flex items-center justify-between">
-        <div>
+        <div className="hidden lg:block">
           <h2 className="text-xl font-bold text-slate-900">공지사항</h2>
           <p className="mt-1 text-sm text-slate-500">
             비회원도 조회할 수 있습니다. 작성은 관리자만 가능합니다.
@@ -134,7 +135,7 @@ function NoticeList() {
         {isAdmin && (
           <Link
             to="/notices/new"
-            className="inline-flex items-center gap-1.5 rounded-lg bg-primary-600 px-3 py-2 text-sm font-medium text-white hover:bg-primary-700"
+            className="ml-auto inline-flex items-center gap-1.5 rounded-lg bg-primary-600 px-3 py-2 text-sm font-medium text-white hover:bg-primary-700"
           >
             <Plus className="h-4 w-4" />
             공지 작성
@@ -486,8 +487,7 @@ function NoticeDetail() {
 
 export default function NoticePage() {
   return (
-    <div className="min-h-dvh bg-slate-50">
-      <Header />
+    <AppPageShell title="공지사항">
       <Routes>
         <Route index element={<NoticeList />} />
         <Route path="new" element={<NoticeEditor mode="create" />} />
@@ -495,6 +495,6 @@ export default function NoticePage() {
         <Route path=":id/edit" element={<NoticeEditor mode="edit" />} />
         <Route path="*" element={<Navigate to="/notices" replace />} />
       </Routes>
-    </div>
+    </AppPageShell>
   );
 }

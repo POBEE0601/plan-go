@@ -32,11 +32,12 @@ try {
   process.exit(1);
 }
 
-const { ensurePrepSchema } = await import('./db/migrate.js');
+const { ensurePrepSchema, ensurePlaceMetaSchema } = await import('./db/migrate.js');
 try {
   await ensurePrepSchema();
+  await ensurePlaceMetaSchema();
 } catch (err) {
-  console.error('준비 체크리스트 스키마 적용 실패:', err);
+  console.error('스키마 적용 실패:', err);
   process.exit(1);
 }
 

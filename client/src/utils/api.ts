@@ -7,6 +7,7 @@ import type {
 import type { NoticePost } from '../types/notice';
 import type { DeployStatus, ReleasePost } from '../types/release';
 import type {
+  CustomCategory,
   DayAssignment,
   InvitePreview,
   Place,
@@ -336,6 +337,7 @@ export const travelApi = {
     request<void>(`/travel-plans/${id}/leave`, { method: 'POST' }),
 
   addPlace: (
+
     planId: string,
     data: Omit<Place, 'id' | 'planId'> & { googlePlaceId?: string },
   ) =>
@@ -348,6 +350,33 @@ export const travelApi = {
     request<void>(`/travel-plans/${planId}/places/${placeId}`, {
       method: 'DELETE',
     }),
+
+  // 2026-09-22 카테고리·핀 색·소개 수정
+  updatePlace: (
+    planId: string,
+    placeId: string,
+    data: Partial<Pick<Place, 'category' | 'pinColor' | 'memo'>>,
+  ) =>
+    request<Place>(`/travel-plans/${planId}/places/${placeId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    }),
+
+  // 2026-09-23 여행별 커스텀 카테고리
+  addCustomCategory: (
+    planId: string,
+    data: { emoji: string; label: string; pinColor: string },
+  ) =>
+    request<CustomCategory>(`/travel-plans/${planId}/custom-categories`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  removeCustomCategory: (planId: string, categoryId: string) =>
+    request<TravelPlan>(
+      `/travel-plans/${planId}/custom-categories/${encodeURIComponent(categoryId)}`,
+      { method: 'DELETE' },
+    ),
 
   assignDay: (
     planId: string,

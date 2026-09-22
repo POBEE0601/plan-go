@@ -1,11 +1,21 @@
 // 2026-08-31 장소·일자·멤버 클라이언트 타입
 
-export type PlaceCategory =
+// 2026-09-23 내장 카테고리 + 여행별 커스텀 id
+export type BuiltInPlaceCategory =
   | 'attraction'
-  | 'restaurant'
-  | 'hotel'
   | 'cafe'
-  | 'other';
+  | 'restaurant'
+  | 'dessert'
+  | 'shopping';
+
+export type PlaceCategory = string;
+
+export interface CustomCategory {
+  id: string;
+  emoji: string;
+  label: string;
+  pinColor: string;
+}
 
 export type MemberRole = 'owner' | 'editor' | 'viewer';
 
@@ -18,6 +28,8 @@ export interface Place {
   lat: number;
   lng: number;
   category: PlaceCategory;
+  // 2026-09-22 지도 핀 색 (미지정 시 카테고리 기본색)
+  pinColor?: string;
   rating?: number;
   photoUrl?: string;
   memo?: string;
@@ -68,6 +80,8 @@ export interface TravelPlan {
   regionLng?: number;
   prepMemo?: string;
   prepItems?: PrepItem[];
+  // 2026-09-23 여행별 커스텀 카테고리
+  customCategories?: CustomCategory[];
   places: Place[];
   dayAssignments: DayAssignment[];
   members: PlanMember[];

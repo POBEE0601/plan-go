@@ -1,3 +1,4 @@
+// 2026-09-22 장소 핀 색 저장
 // 2026-08-31 로컬 JSON DB → Supabase Postgres
 import bcrypt from 'bcryptjs';
 import type { PoolClient } from 'pg';
@@ -16,6 +17,7 @@ import type {
 } from '../types/release.js';
 import type {
   CreatePlaceBody,
+  CustomCategory,
   DayAssignment,
   MemberRole,
   Place,
@@ -73,7 +75,8 @@ const mapPlace = (row: Record<string, unknown>): Place => ({
   address: String(row.address ?? ''),
   lat: Number(row.lat),
   lng: Number(row.lng),
-  category: (row.category as Place['category']) ?? 'other',
+  category: (row.category as Place['category']) ?? 'attraction',
+  pinColor: row.pin_color ? String(row.pin_color) : undefined,
   rating: row.rating == null ? undefined : Number(row.rating),
   photoUrl: row.photo_url ? String(row.photo_url) : undefined,
   memo: row.memo ? String(row.memo) : undefined,
@@ -102,6 +105,30 @@ const mapMember = (row: Record<string, unknown>): PlanMember => ({
   createdAt: asIso(row.created_at),
 });
 
+const HEX_COLOR = /^#([0-9a-fA-F]{6})$/;
+
+const parseCustomCategories = (value: unknown): CustomCategory[] => {
+  const arr = parseJson<unknown[]>(value, []);
+  if (!Array.isArray(arr)) return [];
+  const out: CustomCategory[] = [];
+  for (const item of arr) {
+    if (!item || typeof item !== 'object') continue;
+    const row = item as Record<string, unknown>;
+    const id = String(row.id ?? '').slice(0, 64);
+    const emoji = String(row.emoji ?? '').trim().slice(0, 8);
+    const label = String(row.label ?? '').trim().slice(0, 20);
+    const pinColor = String(row.pinColor ?? '');
+    if (!id || !emoji || !label) continue;
+    out.push({
+      id,
+      emoji,
+      label,
+      pinColor: HEX_COLOR.test(pinColor) ? pinColor : '#64748b',
+    });
+  }
+  return out.slice(0, 20);
+};
+
 const mapPlanRow = (
   row: Record<string, unknown>,
 ): Omit<TravelPlan, 'places' | 'dayAssignments' | 'members' | 'prepItems'> => ({
@@ -114,6 +141,7 @@ const mapPlanRow = (
   regionLat: row.region_lat == null ? undefined : Number(row.region_lat),
   regionLng: row.region_lng == null ? undefined : Number(row.region_lng),
   prepMemo: row.prep_memo == null ? '' : String(row.prep_memo),
+  customCategories: parseCustomCategories(row.custom_categories),
 });
 
 const mapPrepItem = (row: Record<string, unknown>): PrepItem => ({
@@ -512,6 +540,70 @@ export const updatePrepMemo = async (
   return next;
 };
 
+const CUSTOM_EMOJI_FALLBACK = '📌';
+const CUSTOM_PIN_FALLBACK = '#64748b';
+
+export const addCustomCategory = async (
+  planId: string,
+  userId: string,
+  input: { emoji?: string; label?: string; pinColor?: string },
+): Promise<CustomCategory | null> => {
+  const plan = await requireWritablePlan(planId, userId);
+  if (!plan) return null;
+
+  const label = String(input.label ?? '').trim().slice(0, 20);
+  if (!label) throw new Error('카테고리 이름을 입력해 주세요.');
+
+  const current = plan.customCategories ?? [];
+  if (current.length >= 20) {
+    throw new Error('커스텀 카테고리는 20개까지 추가할 수 있습니다.');
+  }
+  if (current.some((c) => c.label.toLowerCase() === label.toLowerCase())) {
+    throw new Error('같은 이름의 카테고리가 이미 있습니다.');
+  }
+
+  const emoji =
+    String(input.emoji ?? '').trim().slice(0, 8) || CUSTOM_EMOJI_FALLBACK;
+  const pinColor = HEX_COLOR.test(String(input.pinColor ?? ''))
+    ? String(input.pinColor)
+    : CUSTOM_PIN_FALLBACK;
+
+  const created: CustomCategory = {
+    id: `c_${generateId()}`,
+    emoji,
+    label,
+    pinColor,
+  };
+  const next = [...current, created];
+  await pool.query(
+    `UPDATE travel_plans SET custom_categories = $1::jsonb WHERE id = $2`,
+    [JSON.stringify(next), planId],
+  );
+  return created;
+};
+
+export const removeCustomCategory = async (
+  planId: string,
+  userId: string,
+  categoryId: string,
+): Promise<TravelPlan | null> => {
+  const plan = await requireWritablePlan(planId, userId);
+  if (!plan) return null;
+
+  const next = (plan.customCategories ?? []).filter((c) => c.id !== categoryId);
+  await pool.query(
+    `UPDATE travel_plans SET custom_categories = $1::jsonb WHERE id = $2`,
+    [JSON.stringify(next), planId],
+  );
+  await pool.query(
+    `UPDATE places
+        SET category = 'attraction', pin_color = NULL
+      WHERE plan_id = $1 AND category = $2`,
+    [planId, categoryId],
+  );
+  return getTravelPlanById(planId, userId);
+};
+
 export const addPrepItem = async (
   planId: string,
   userId: string,
@@ -609,7 +701,18 @@ export const addPlace = async (
     address: body.address?.trim() ?? '',
     lat: body.lat,
     lng: body.lng,
-    category: body.category ?? 'other',
+    category: body.category ?? 'attraction',
+    pinColor:
+      body.pinColor ??
+      (
+        {
+          attraction: '#16a34a',
+          cafe: '#92400e',
+          restaurant: '#dc2626',
+          dessert: '#db2777',
+          shopping: '#7c3aed',
+        } as Record<string, string>
+      )[body.category ?? 'attraction'],
     rating: body.rating,
     photoUrl: body.photoUrl,
     memo: body.memo,
@@ -618,8 +721,8 @@ export const addPlace = async (
 
   await pool.query(
     `INSERT INTO places
-      (id, plan_id, google_place_id, name, address, lat, lng, category, rating, photo_url, memo, types)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
+      (id, plan_id, google_place_id, name, address, lat, lng, category, rating, photo_url, memo, types, pin_color)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
     [
       created.id,
       created.planId,
@@ -633,6 +736,7 @@ export const addPlace = async (
       created.photoUrl ?? null,
       created.memo ?? null,
       created.types ? JSON.stringify(created.types) : null,
+      created.pinColor ?? null,
     ],
   );
 
@@ -663,8 +767,9 @@ export const updatePlace = async (
   await pool.query(
     `UPDATE places SET
       google_place_id = $1, name = $2, address = $3, lat = $4, lng = $5,
-      category = $6, rating = $7, photo_url = $8, memo = $9, types = $10
-     WHERE id = $11 AND plan_id = $12`,
+      category = $6, rating = $7, photo_url = $8, memo = $9, types = $10,
+      pin_color = $11
+     WHERE id = $12 AND plan_id = $13`,
     [
       next.googlePlaceId ?? null,
       next.name,
@@ -676,6 +781,7 @@ export const updatePlace = async (
       next.photoUrl ?? null,
       next.memo ?? null,
       next.types ? JSON.stringify(next.types) : null,
+      next.pinColor ?? null,
       placeId,
       planId,
     ],

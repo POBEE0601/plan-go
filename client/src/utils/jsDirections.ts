@@ -92,6 +92,18 @@ export const buildMapsUrl = (
   return `https://www.google.com/maps/dir/?${params.toString()}`;
 };
 
+// 2026-09-22 origin 생략 → 구글맵이 현위치를 출발지로 쓰는 길찾기
+export const mapsDirFromHere = (place: Place): string => {
+  const params = new URLSearchParams({
+    api: '1',
+    destination: `${place.lat},${place.lng}`,
+  });
+  if (place.googlePlaceId) {
+    params.set('destination_place_id', place.googlePlaceId);
+  }
+  return `https://www.google.com/maps/dir/?${params.toString()}`;
+};
+
 const requestRoute = (
   origin: google.maps.LatLngLiteral,
   destination: google.maps.LatLngLiteral,

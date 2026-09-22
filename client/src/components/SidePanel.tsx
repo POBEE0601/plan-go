@@ -1,3 +1,4 @@
+// 2026-09-22 모바일 드로어 z-index를 하단 홈바 위로
 // 2026-09-04 초대 멤버 휴지통은 나가기, 삭제는 방장만
 // 2026-09-04 장기간 여행: 접힌 레일 일차 압축
 // 2026-09-01 도시별 비상 연락망 버튼
@@ -290,7 +291,7 @@ export default function SidePanel({ open = true, onClose }: SidePanelProps) {
       )}
 
     <aside
-      className={`flex w-72 shrink-0 flex-col border-r border-slate-200 bg-white transition-transform duration-200 max-lg:fixed max-lg:inset-y-0 max-lg:left-0 max-lg:z-40 max-lg:shadow-xl max-lg:pt-[env(safe-area-inset-top)] max-lg:pb-[env(safe-area-inset-bottom)] ${
+      className={`flex w-72 shrink-0 flex-col border-r border-slate-200 bg-white transition-transform duration-200 max-lg:fixed max-lg:inset-y-0 max-lg:left-0 max-lg:z-50 max-lg:shadow-xl max-lg:pt-[env(safe-area-inset-top)] max-lg:pb-[env(safe-area-inset-bottom)] ${
         sidebarCollapsed ? 'lg:hidden' : ''
       } ${open ? 'translate-x-0' : 'max-lg:-translate-x-full'}`}
     >
