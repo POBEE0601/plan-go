@@ -1,3 +1,4 @@
+// 2026-09-23 아이디 저장
 // 2026-09-23 최상단 중앙 로고
 // 2026-09-01 모바일 여백 조정
 // 2026-09-07 공식 로고 컴포넌트 적용
@@ -7,6 +8,8 @@ import { AlertCircle, Loader2, LogIn } from 'lucide-react';
 import PageBrandBar from '../components/PageBrandBar';
 import { useAuthStore } from '../store/useAuthStore';
 
+const SAVED_EMAIL_KEY = 'plan-go-saved-email';
+
 export default function LoginPage() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -14,8 +17,13 @@ export default function LoginPage() {
 
   const from = (location.state as { from?: string })?.from ?? '/dashboard';
 
-  const [email, setEmail] = useState('');
+  const [email, setEmail] = useState(
+    () => localStorage.getItem(SAVED_EMAIL_KEY) ?? '',
+  );
   const [password, setPassword] = useState('');
+  const [rememberId, setRememberId] = useState(
+    () => Boolean(localStorage.getItem(SAVED_EMAIL_KEY)),
+  );
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -24,6 +32,8 @@ export default function LoginPage() {
     setIsSubmitting(true);
     try {
       await login({ email, password });
+      if (rememberId) localStorage.setItem(SAVED_EMAIL_KEY, email.trim());
+      else localStorage.removeItem(SAVED_EMAIL_KEY);
       navigate(from, { replace: true });
     } catch {
       // store에서 error 처리
@@ -86,6 +96,15 @@ export default function LoginPage() {
                 disabled={isSubmitting}
               />
             </div>
+            <label className="flex items-center gap-2 text-sm text-slate-600">
+              <input
+                type="checkbox"
+                checked={rememberId}
+                onChange={(e) => setRememberId(e.target.checked)}
+                className="h-4 w-4 rounded border-slate-300 text-primary-600"
+              />
+              아이디 저장
+            </label>
           </div>
 
           <button

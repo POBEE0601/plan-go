@@ -225,6 +225,7 @@ function CompactPoolPlace({
   );
 }
 
+// 2026-09-23 선택 장소로 맞출 때 시트 전체가 밀리지 않게 목록만 스크롤
 // 2026-09-23 목록 스크롤일 때만 따라가게 해서 카드 선택과 싸우지 않게
 function CompactTimeline({
   dayIndex,
@@ -270,8 +271,11 @@ function CompactTimeline({
     if (!el || !root || !root.contains(el)) return;
     const er = el.getBoundingClientRect();
     const rr = root.getBoundingClientRect();
+    // 접힌 시트에서는 목록이 안 보이므로 조상(시트)을 밀지 않는다
+    if (rr.height < 8) return;
     if (er.top >= rr.top + 8 && er.bottom <= rr.bottom - 8) return;
-    el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    const top = er.top - rr.top + root.scrollTop;
+    root.scrollTo({ top: Math.max(0, top - 8), behavior: 'smooth' });
   }, [selectedAssignmentId]);
 
   useEffect(() => {
@@ -834,7 +838,7 @@ export default function PlacePoolBoard({
               focusPlaceId={focusPlaceId}
               focusToken={selectedAssignmentId}
               onSelectPlace={onSelectMapPlace}
-              layoutKey={`${useMobileSchedule ? 'mob-schedule' : 'mob-map'}-${sheetHeight}-${mapSearchOpen ? 's' : 'n'}`}
+              layoutKey={`${useMobileSchedule ? 'mob-schedule' : 'mob-map'}-${mapSearchOpen ? 's' : 'n'}`}
               overlayPadding={{
                 top: mapSearchOpen ? 96 : 72,
                 right: 48,
@@ -844,6 +848,7 @@ export default function PlacePoolBoard({
             />
             {mapSearchOverlay}
             <ResizablePlaceSheet
+              defaultToMin={!useMobileSchedule}
               defaultRatio={useMobileSchedule ? 0.5 : 0.34}
               minPx={useMobileSchedule ? 176 : 96}
               onHeightChange={onSheetHeight}

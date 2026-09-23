@@ -17,7 +17,6 @@ import {
   AlertCircle,
   Compass,
   LayoutList,
-  Loader2,
   Map as MapIcon,
   UserPlus,
   X,
@@ -32,6 +31,7 @@ import InviteModal from '../components/InviteModal';
 import PrepBoardModal from '../components/PrepBoardModal';
 import EmergencyModal from '../components/EmergencyModal';
 import MobileTabBar from '../components/MobileTabBar';
+import BootSplash from '../components/BootSplash';
 import MobileTopBar from '../components/MobileTopBar';
 import MobileToolsPanel from '../components/MobileToolsPanel';
 import SavedPlacesPanel from '../components/SavedPlacesPanel';
@@ -191,10 +191,7 @@ export default function DashboardPage() {
 
         <main className="flex min-w-0 flex-1 flex-col overflow-hidden bg-white">
           {isLoading ? (
-            <div className="flex flex-1 flex-col items-center justify-center text-slate-400">
-              <Loader2 className="mb-3 h-10 w-10 animate-spin text-primary-500" />
-              <p className="text-sm">여행 계획을 불러오는 중...</p>
-            </div>
+            <BootSplash embedded />
           ) : !isDesktop && mobileTab === 'tools' ? (
             <div className="min-h-0 flex-1 overflow-hidden">
               <MobileToolsPanel

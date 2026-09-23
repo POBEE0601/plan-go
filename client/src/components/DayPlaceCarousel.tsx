@@ -88,7 +88,7 @@ export default function DayPlaceCarousel({
             type="button"
             data-carousel-id={assignment.id}
             onClick={() => onSelect(assignment.id)}
-            className={`flex w-[min(78vw,20rem)] shrink-0 snap-center items-center gap-3 rounded-2xl border bg-white p-3 text-left shadow-sm ${
+            className={`flex w-[min(78vw,20rem)] shrink-0 snap-center items-center gap-3 rounded-2xl border bg-white p-3 text-left shadow-sm transition duration-200 ${
               active
                 ? 'border-primary-400 ring-1 ring-primary-200'
                 : 'border-slate-200'

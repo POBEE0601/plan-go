@@ -1,3 +1,5 @@
+// 2026-09-23 장소 이동은 한 번만 패닝하고 핀은 보이는 영역 중앙
+// 2026-09-23 핀 팝업: 평점, 다크·라이트 색
 // 2026-09-23 하단 시트 가림을 빼고 선택 장소로 카메라를 맞춤
 // 2026-09-23 선택 장소로 카메라가 따라가며 이웃 핀까지 보이게
 // 2026-09-22 카테고리 색 핀 + 클릭 시 장소명·카테고리
@@ -9,8 +11,8 @@
 // 2026-09-04 목록형 패널용 헤더(showHeader)
 // 2026-09-04 다크 테마 지도 스타일
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { GoogleMap, InfoWindow, Marker, Polyline } from '@react-google-maps/api';
-import { Loader2, MapPin } from 'lucide-react';
+import { GoogleMap, Marker, OverlayView, Polyline } from '@react-google-maps/api';
+import { Loader2, MapPin, Star, X } from 'lucide-react';
 import { useGoogleMaps } from '../hooks/useGoogleMaps';
 import { useMapUiStore } from '../store/useMapUiStore';
 import { useTravelStore } from '../store/useTravelStore';
@@ -42,20 +44,59 @@ interface DayTimelineMapProps {
 const mapContainerStyle = { width: '100%', height: '100%' };
 
 const DEFAULT_PAD = { top: 72, right: 48, bottom: 24, left: 16 };
+const FOLLOW_ZOOM = 13;
+
+function shiftedCenter(
+  map: google.maps.Map,
+  target: google.maps.LatLngLiteral,
+  padding: google.maps.Padding,
+  zoom: number,
+): google.maps.LatLngLiteral {
+  const proj = map.getProjection();
+  const dx = ((padding.left ?? 0) - (padding.right ?? 0)) / 2;
+  const dy = ((padding.top ?? 0) - (padding.bottom ?? 0)) / 2;
+  if (!proj) return target;
+  const pt = proj.fromLatLngToPoint(new google.maps.LatLng(target.lat, target.lng));
+  if (!pt) return target;
+  const scale = 2 ** zoom;
+  const next = proj.fromPointToLatLng(
+    new google.maps.Point(pt.x - dx / scale, pt.y - dy / scale),
+  );
+  if (!next) return target;
+  return { lat: next.lat(), lng: next.lng() };
+}
 
 function focusCamera(
   map: google.maps.Map,
   target: google.maps.LatLngLiteral,
   padding: google.maps.Padding,
 ) {
-  const bounds = new google.maps.LatLngBounds();
-  bounds.extend(target);
-  map.fitBounds(bounds, padding);
-  window.setTimeout(() => {
-    const z = map.getZoom();
-    if (z != null && z > 16) map.setZoom(16);
-    if (z != null && z < 14) map.setZoom(15);
-  }, 80);
+  const apply = () => {
+    const center = shiftedCenter(map, target, padding, FOLLOW_ZOOM);
+    const zoom = map.getZoom();
+    const current = map.getCenter();
+    const sameSpot =
+      current != null &&
+      Math.abs(current.lat() - center.lat) < 0.0004 &&
+      Math.abs(current.lng() - center.lng) < 0.0004;
+    if (zoom != null && Math.abs(zoom - FOLLOW_ZOOM) < 0.25) {
+      if (sameSpot) return;
+      map.panTo(center);
+      return;
+    }
+    if (typeof map.moveCamera === 'function') {
+      map.moveCamera({ center, zoom: FOLLOW_ZOOM });
+      return;
+    }
+    map.setZoom(FOLLOW_ZOOM);
+    map.setCenter(center);
+  };
+  // 투영이 없으면 빈 중심으로 먼저 점프하지 않고 한 번만 기다린다
+  if (!map.getProjection()) {
+    google.maps.event.addListenerOnce(map, 'idle', apply);
+    return;
+  }
+  apply();
 }
 
 export default function DayTimelineMap({
@@ -88,6 +129,31 @@ export default function DayTimelineMap({
     () => ({ top: padTop, right: padRight, bottom: padBottom, left: padLeft }),
     [padTop, padRight, padBottom, padLeft],
   );
+  const paddingRef = useRef(padding);
+  paddingRef.current = padding;
+  const placesRef = useRef(places);
+  placesRef.current = places;
+  const bootCamera = useRef<{
+    center: google.maps.LatLngLiteral;
+    zoom: number;
+  } | null>(null);
+  const mapOptions = useMemo(
+    () => ({
+      streetViewControl: false,
+      mapTypeControl: false,
+      fullscreenControl: false,
+      rotateControl: false,
+      scaleControl: false,
+      cameraControl: false,
+      zoomControl: true,
+      zoomControlOptions: isLoaded
+        ? { position: google.maps.ControlPosition.RIGHT_TOP }
+        : undefined,
+      clickableIcons: false,
+      styles: theme === 'dark' ? DARK_MAP_STYLES : [],
+    }),
+    [isLoaded, theme],
+  );
 
   const fallbackCenter = useMemo(() => {
     if (selectedPlan?.regionLat != null && selectedPlan?.regionLng != null) {
@@ -95,6 +161,21 @@ export default function DayTimelineMap({
     }
     return mapCenter;
   }, [selectedPlan?.regionLat, selectedPlan?.regionLng, mapCenter]);
+
+  // center/zoom 을 매 렌더 새 객체로 넘기면 라이브러리가 카메라를 되돌려 깜빡인다
+  if (!bootCamera.current) {
+    const first = places[0];
+    bootCamera.current = {
+      center: first
+        ? { lat: first.lat, lng: first.lng }
+        : fallbackCenter,
+      zoom: places.length ? FOLLOW_ZOOM : 11,
+    };
+  }
+  const camera = bootCamera.current ?? {
+    center: fallbackCenter,
+    zoom: 11,
+  };
 
   const placeKey = useMemo(
     () =>
@@ -149,18 +230,19 @@ export default function DayTimelineMap({
 
   useEffect(() => {
     const map = mapRef.current;
+    const list = placesRef.current;
     if (!map || !mapReady || !isLoaded) return;
-    if (focusPlaceId && places.some((p) => p.id === focusPlaceId)) return;
+    if (focusPlaceId && list.some((p) => p.id === focusPlaceId)) return;
 
-    if (places.length === 1) {
-      map.setCenter({ lat: places[0].lat, lng: places[0].lng });
+    if (list.length === 1) {
+      map.setCenter({ lat: list[0].lat, lng: list[0].lng });
       map.setZoom(14);
       return;
     }
 
-    if (places.length > 1) {
+    if (list.length > 1) {
       const bounds = new google.maps.LatLngBounds();
-      places.forEach((p) => bounds.extend({ lat: p.lat, lng: p.lng }));
+      list.forEach((p) => bounds.extend({ lat: p.lat, lng: p.lng }));
       paths.forEach((path) => {
         path.forEach((pt) => bounds.extend(pt));
       });
@@ -170,7 +252,7 @@ export default function DayTimelineMap({
 
     map.setCenter(fallbackCenter);
     map.setZoom(11);
-  }, [isLoaded, mapReady, places, paths, fallbackCenter, focusPlaceId]);
+  }, [isLoaded, mapReady, placeKey, paths, fallbackCenter, focusPlaceId]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -178,17 +260,27 @@ export default function DayTimelineMap({
     google.maps.event.trigger(map, 'resize');
   }, [layoutKey, isLoaded, mapReady]);
 
+  const focused = places.find((p) => p.id === focusPlaceId) ?? null;
+  const focusLat = focused?.lat ?? null;
+  const focusLng = focused?.lng ?? null;
   useEffect(() => {
     const map = mapRef.current;
-    if (!map || !mapReady || !isLoaded || !focusPlaceId) return;
-    const idx = places.findIndex((p) => p.id === focusPlaceId);
-    if (idx < 0) return;
-    const focused = places[idx];
-    const t = window.setTimeout(() => {
-      focusCamera(map, { lat: focused.lat, lng: focused.lng }, padding);
-    }, 40);
-    return () => window.clearTimeout(t);
-  }, [focusPlaceId, focusToken, places, isLoaded, mapReady, padding, layoutKey]);
+    if (!map || !mapReady || !isLoaded || focusLat == null || focusLng == null) {
+      return;
+    }
+    focusCamera(map, { lat: focusLat, lng: focusLng }, paddingRef.current);
+  }, [
+    focusPlaceId,
+    focusToken,
+    focusLat,
+    focusLng,
+    padTop,
+    padRight,
+    padBottom,
+    padLeft,
+    isLoaded,
+    mapReady,
+  ]);
 
   // 검색 결과가 생기면 첫 결과로 이동 (시트 가림 보정)
   useEffect(() => {
@@ -218,8 +310,8 @@ export default function DayTimelineMap({
       ) : (
         <GoogleMap
           mapContainerStyle={mapContainerStyle}
-          center={places[0] ? { lat: places[0].lat, lng: places[0].lng } : fallbackCenter}
-          zoom={places.length ? 12 : 11}
+          center={camera.center}
+          zoom={camera.zoom}
           onLoad={(map) => {
             mapRef.current = map;
             setMapReady(true);
@@ -231,20 +323,7 @@ export default function DayTimelineMap({
             mapRef.current = null;
             setMapReady(false);
           }}
-          options={{
-            streetViewControl: false,
-            mapTypeControl: false,
-            fullscreenControl: false,
-            rotateControl: false,
-            scaleControl: false,
-            cameraControl: false,
-            zoomControl: true,
-            zoomControlOptions: isLoaded
-              ? { position: google.maps.ControlPosition.RIGHT_TOP }
-              : undefined,
-            clickableIcons: false,
-            styles: theme === 'dark' ? DARK_MAP_STYLES : [],
-          }}
+          options={mapOptions}
         >
           {paths.map((path, i) =>
             path.length > 1 ? (
@@ -275,11 +354,7 @@ export default function DayTimelineMap({
               position={{ lat: place.lat, lng: place.lng }}
               title={`${place.name} · ${categoryBadge(place.category)}`}
               zIndex={focusPlaceId === place.id ? 200 : 100 + i}
-              icon={numberedPinIcon(
-                pinColorOf(place),
-                i + 1,
-                focusPlaceId === place.id,
-              )}
+              icon={numberedPinIcon(pinColorOf(place), i + 1)}
               onClick={() => {
                 setInfoPlaceId(place.id);
                 onSelectPlace?.(place.id);
@@ -287,19 +362,58 @@ export default function DayTimelineMap({
             />
           ))}
           {infoPlace && (
-            <InfoWindow
+            <OverlayView
               position={{ lat: infoPlace.lat, lng: infoPlace.lng }}
-              onCloseClick={() => setInfoPlaceId(null)}
+              mapPaneName={OverlayView.FLOAT_PANE}
+              getPixelPositionOffset={(width, height) => ({
+                x: -(width / 2),
+                y: -(height + 46),
+              })}
             >
-              <div className="min-w-[8rem] px-0.5 py-0.5">
-                <p className="text-sm font-semibold text-slate-800">
-                  {infoPlace.name}
-                </p>
-                <p className="mt-0.5 text-xs text-slate-500">
-                  {categoryBadge(infoPlace.category)}
-                </p>
+              <div
+                key={infoPlace.id}
+                className={`pin-pop animate-pop-in w-52 rounded-2xl border px-3 py-2.5 shadow-lg ${
+                  theme === 'dark'
+                    ? 'border-slate-600 bg-slate-900 text-slate-100'
+                    : 'border-slate-200 bg-white text-slate-800'
+                }`}
+              >
+                <div className="flex items-start gap-2">
+                  <p className="min-w-0 flex-1 text-sm font-semibold leading-snug">
+                    {infoPlace.name}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => setInfoPlaceId(null)}
+                    className={`-mr-1 -mt-1 rounded-md p-1 ${
+                      theme === 'dark'
+                        ? 'text-slate-400 hover:bg-slate-800'
+                        : 'text-slate-400 hover:bg-slate-100'
+                    }`}
+                    aria-label="장소 정보 닫기"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+                <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-[11px]">
+                  <span
+                    className={`rounded-md px-1.5 py-0.5 ${
+                      theme === 'dark'
+                        ? 'bg-slate-800 text-slate-200'
+                        : 'bg-slate-100 text-slate-600'
+                    }`}
+                  >
+                    {categoryBadge(infoPlace.category)}
+                  </span>
+                  {infoPlace.rating != null && (
+                    <span className="inline-flex items-center gap-0.5 font-medium text-amber-500">
+                      <Star className="h-3 w-3 fill-amber-400 text-amber-400" />
+                      {infoPlace.rating.toFixed(1)}
+                    </span>
+                  )}
+                </div>
               </div>
-            </InfoWindow>
+            </OverlayView>
           )}
         </GoogleMap>
       )}

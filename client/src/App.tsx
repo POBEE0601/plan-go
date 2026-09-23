@@ -1,11 +1,10 @@
 // 2026-09-01 로딩 화면 모바일 높이
 // 2026-08-31 라우팅: 홈·인증·대시보드·초대·고객게시판·공지·배포
 // 2026-09-04 테마 클래스 동기화
-import { useEffect, useLayoutEffect } from 'react';
+import { useEffect, useLayoutEffect, useState } from 'react';
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
-import { Loader2 } from 'lucide-react';
 import ProtectedRoute from './components/ProtectedRoute';
-import BrandLogo from './components/BrandLogo';
+import BootSplash from './components/BootSplash';
 import HomePage from './pages/HomePage';
 import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
@@ -19,21 +18,15 @@ import { applyThemeClass, useThemeStore } from './store/useThemeStore';
 
 function AppRoutes() {
   const { initialize, isLoading, isAuthenticated } = useAuthStore();
+  const [splash, setSplash] = useState(true);
 
   useEffect(() => {
     initialize();
   }, [initialize]);
 
-  if (isLoading) {
+  if (splash) {
     return (
-      <div className="flex min-h-dvh flex-col bg-slate-50 dark:bg-slate-950">
-        <header className="flex h-14 shrink-0 items-center justify-center">
-          <BrandLogo size="sm" align="center" />
-        </header>
-        <div className="flex flex-1 items-center justify-center">
-          <Loader2 className="h-8 w-8 animate-spin text-primary-600" />
-        </div>
-      </div>
+      <BootSplash done={!isLoading} onFinish={() => setSplash(false)} />
     );
   }
 

@@ -245,7 +245,7 @@ export default function SavedPlacesPanel({
             <div
               role="dialog"
               aria-label={`${inspectPlace.name} 상세`}
-              className="flex h-[min(88dvh,42rem)] w-full max-w-lg flex-col overflow-hidden rounded-t-2xl bg-white shadow-xl sm:rounded-2xl"
+              className="animate-rise-in flex h-[min(88dvh,42rem)] w-full max-w-lg flex-col overflow-hidden rounded-t-2xl bg-white shadow-xl sm:rounded-2xl"
               onClick={(e) => e.stopPropagation()}
             >
               <PlaceInspector

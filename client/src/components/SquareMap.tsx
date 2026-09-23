@@ -4,12 +4,8 @@
 // 2026-08-31 정사각형 지도 패널 (기본 숨김, 우측 슬롯)
 // 2026-09-04 다크 테마 지도 스타일
 import { useEffect, useRef, useState } from 'react';
-import {
-  GoogleMap,
-  InfoWindow,
-  Marker,
-} from '@react-google-maps/api';
-import { Loader2, Map as MapIcon, X } from 'lucide-react';
+import { GoogleMap, Marker, OverlayView } from '@react-google-maps/api';
+import { Loader2, Map as MapIcon, Star, X } from 'lucide-react';
 import { useTravelStore } from '../store/useTravelStore';
 import { useMapUiStore } from '../store/useMapUiStore';
 import { usePlanUiStore } from '../store/usePlanUiStore';
@@ -153,11 +149,7 @@ export default function SquareMap({ onClose }: SquareMapProps) {
               position={{ lat: p.lat, lng: p.lng }}
               title={`${p.name} · ${categoryBadge(p.category)}`}
               zIndex={focusedPlaceId === p.id ? 200 : 100 + i}
-              icon={numberedPinIcon(
-                pinColorOf(p),
-                i + 1,
-                focusedPlaceId === p.id,
-              )}
+              icon={numberedPinIcon(pinColorOf(p), i + 1)}
               onClick={() => {
                 setInfoPlaceId(p.id);
                 onMarkerClick(p);
@@ -168,20 +160,54 @@ export default function SquareMap({ onClose }: SquareMapProps) {
               selectedPlan?.places
                 .filter((p) => p.id === infoPlaceId)
                 .map((p) => (
-                  <InfoWindow
+                  <OverlayView
                     key={`info-${p.id}`}
                     position={{ lat: p.lat, lng: p.lng }}
-                    onCloseClick={() => setInfoPlaceId(null)}
+                    mapPaneName={OverlayView.FLOAT_PANE}
+                    getPixelPositionOffset={(width, height) => ({
+                      x: -(width / 2),
+                      y: -(height + 46),
+                    })}
                   >
-                    <div className="min-w-[8rem] px-0.5 py-0.5">
-                      <p className="text-sm font-semibold text-slate-800">
-                        {p.name}
-                      </p>
-                      <p className="mt-0.5 text-xs text-slate-500">
-                        {categoryBadge(p.category)}
-                      </p>
+                    <div
+                      className={`animate-pop-in w-52 rounded-2xl border px-3 py-2.5 shadow-lg ${
+                        theme === 'dark'
+                          ? 'border-slate-600 bg-slate-900 text-slate-100'
+                          : 'border-slate-200 bg-white text-slate-800'
+                      }`}
+                    >
+                      <div className="flex items-start gap-2">
+                        <p className="min-w-0 flex-1 text-sm font-semibold leading-snug">
+                          {p.name}
+                        </p>
+                        <button
+                          type="button"
+                          onClick={() => setInfoPlaceId(null)}
+                          className="rounded-md p-1 text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"
+                          aria-label="장소 정보 닫기"
+                        >
+                          <X className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                      <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-[11px]">
+                        <span
+                          className={`rounded-md px-1.5 py-0.5 ${
+                            theme === 'dark'
+                              ? 'bg-slate-800 text-slate-200'
+                              : 'bg-slate-100 text-slate-600'
+                          }`}
+                        >
+                          {categoryBadge(p.category)}
+                        </span>
+                        {p.rating != null && (
+                          <span className="inline-flex items-center gap-0.5 font-medium text-amber-500">
+                            <Star className="h-3 w-3 fill-amber-400 text-amber-400" />
+                            {p.rating.toFixed(1)}
+                          </span>
+                        )}
+                      </div>
                     </div>
-                  </InfoWindow>
+                  </OverlayView>
                 ))}
           </GoogleMap>
         )}
