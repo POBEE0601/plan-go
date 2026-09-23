@@ -1,3 +1,4 @@
+// 2026-09-23 AI 대화 화면
 // 2026-09-01 로딩 화면 모바일 높이
 // 2026-08-31 라우팅: 홈·인증·대시보드·초대·고객게시판·공지·배포
 // 2026-09-04 테마 클래스 동기화
@@ -5,6 +6,7 @@ import { useEffect, useLayoutEffect, useState } from 'react';
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import ProtectedRoute from './components/ProtectedRoute';
 import BootSplash from './components/BootSplash';
+import AiPage from './pages/AiPage';
 import HomePage from './pages/HomePage';
 import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
@@ -50,6 +52,14 @@ function AppRoutes() {
         }
       />
       <Route path="/invite/:token" element={<InvitePage />} />
+      <Route
+        path="/ai"
+        element={
+          <ProtectedRoute>
+            <AiPage />
+          </ProtectedRoute>
+        }
+      />
       <Route
         path="/dashboard"
         element={

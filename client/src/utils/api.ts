@@ -1,3 +1,4 @@
+// 2026-09-23 AI 대화 API
 // 2026-08-31 인증·여행·장소·초대·게시판·배포 API 클라이언트
 import type {
   BoardComment,
@@ -20,6 +21,7 @@ import type {
   TransitSummary,
   TravelPlan,
 } from '../types/travel';
+import type { AiChatMessage, AiChatResponse } from '../types/ai';
 import type { AuthResponse, LoginData, RegisterData, User } from '../types/user';
 
 const API_BASE = '/api';
@@ -477,5 +479,13 @@ export const travelApi = {
   deletePrepItem: (planId: string, itemId: string) =>
     request<void>(`/travel-plans/${planId}/prep/items/${itemId}`, {
       method: 'DELETE',
+    }),
+};
+
+export const aiApi = {
+  chat: (data: { planId?: string; messages: AiChatMessage[] }) =>
+    request<AiChatResponse>('/ai/chat', {
+      method: 'POST',
+      body: JSON.stringify(data),
     }),
 };

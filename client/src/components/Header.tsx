@@ -1,10 +1,11 @@
+// 2026-09-23 데스크톱·모바일 메뉴에 AI 진입
 // 2026-09-23 로고를 최상단 중앙에 배치
 // 2026-09-22 게시판 통합 네비 (고객/배포는 페이지 탭)
 // 2026-09-01 모바일 헤더: 햄버거 메뉴·여행 목록 버튼·컴팩트 액션
 // 2026-09-04 다크/라이트 전환 버튼
 // 2026-09-07 헤더에 첨부 공식 로고 PNG 적용
 import { useEffect, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import {
   LogIn,
   LogOut,
@@ -13,6 +14,7 @@ import {
   MessageSquareText,
   PanelLeft,
   Rocket,
+  Sparkles,
   User,
   UserPlus,
   X,
@@ -36,6 +38,7 @@ export default function Header({
   const { user, isAuthenticated, logout } = useAuthStore();
   const resetTravel = useTravelStore((s) => s.reset);
   const navigate = useNavigate();
+  const location = useLocation();
   const [navOpen, setNavOpen] = useState(false);
 
   const handleLogout = () => {
@@ -78,6 +81,20 @@ export default function Header({
                 className="rounded-lg px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-50"
               >
                 내 여행
+              </Link>
+            )}
+            {isAuthenticated && (
+              <Link
+                to="/ai"
+                className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm hover:bg-slate-50 ${
+                  location.pathname.startsWith('/ai')
+                    ? 'font-medium text-primary-700'
+                    : 'text-slate-600'
+                }`}
+                aria-current={location.pathname.startsWith('/ai') ? 'page' : undefined}
+              >
+                <Sparkles className="h-4 w-4" />
+                AI
               </Link>
             )}
             <Link
@@ -231,6 +248,16 @@ export default function Header({
                   className="flex items-center gap-2 rounded-lg px-3 py-3 text-sm text-slate-700 hover:bg-slate-50"
                 >
                   내 여행
+                </Link>
+              )}
+              {isAuthenticated && (
+                <Link
+                  to="/ai"
+                  onClick={closeNav}
+                  className="flex items-center gap-2 rounded-lg px-3 py-3 text-sm text-slate-700 hover:bg-slate-50"
+                >
+                  <Sparkles className="h-4 w-4" />
+                  AI
                 </Link>
               )}
               <Link

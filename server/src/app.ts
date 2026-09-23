@@ -1,7 +1,9 @@
+// 2026-09-23 AI 대화 라우트
 // 2026-09-01 CORS·캐시 비활성·업로드는 Storage 또는 로컬
 // 2026-08-31 배포게시판 라우트 등록
 import cors from 'cors';
 import express from 'express';
+import aiRouter from './routes/ai.js';
 import authRouter from './routes/auth.js';
 import boardRouter from './routes/board.js';
 import noticesRouter from './routes/notices.js';
@@ -39,6 +41,7 @@ app.get('/api/health', (_req, res) => {
   res.json({ status: 'ok', service: 'plan-go-api' });
 });
 
+app.use('/api/ai', aiRouter);
 app.use('/api/auth', authRouter);
 app.use('/api/places', placesRouter);
 app.use('/api/travel-plans', travelPlansRouter);

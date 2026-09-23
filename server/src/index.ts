@@ -10,6 +10,13 @@ if (envResult.error) {
   console.warn('server/.env 로드 경고:', envResult.error.message);
 }
 
+// 2026-09-23 Gemini 키가 없어도 나머지 API는 동작한다
+if (!process.env.GEMINI_API_KEY?.trim()) {
+  console.warn(
+    '경고: GEMINI_API_KEY가 비어 있습니다. AI 대화는 server/.env에 키를 넣은 뒤 사용할 수 있습니다.',
+  );
+}
+
 if (!process.env.GOOGLE_MAPS_API_KEY) {
   console.warn(
     '경고: GOOGLE_MAPS_API_KEY가 비어 있습니다. server/.env를 확인하세요.',

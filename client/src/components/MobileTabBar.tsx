@@ -1,3 +1,4 @@
+// 2026-09-23 하단 메뉴에 AI 탭
 // 2026-09-22 모바일 하단 홈바 (여행 홈·일정·저장·게시판·도구)
 import { Link, useLocation } from 'react-router-dom';
 import {
@@ -6,6 +7,7 @@ import {
   MapPin,
   MessageCircle,
   SlidersHorizontal,
+  Sparkles,
 } from 'lucide-react';
 import { useAuthStore } from '../store/useAuthStore';
 import { parseDashboardTab } from '../utils/mobileTabs';
@@ -41,6 +43,12 @@ const ITEMS = [
     label: '도구',
     Icon: SlidersHorizontal,
   },
+  {
+    id: 'ai',
+    to: '/ai',
+    label: 'AI',
+    Icon: Sparkles,
+  },
 ] as const;
 
 export default function MobileTabBar() {
@@ -54,6 +62,7 @@ export default function MobileTabBar() {
   const path = location.pathname;
 
   const isActive = (id: string): boolean => {
+    if (id === 'ai') return path.startsWith('/ai');
     if (id === 'board')
       return path.startsWith('/board') || path.startsWith('/releases');
     if (path.startsWith('/notices')) return id === 'tools';
@@ -66,7 +75,7 @@ export default function MobileTabBar() {
       className="safe-bottom z-30 shrink-0 border-t border-slate-200 bg-white lg:hidden"
       aria-label="주요 메뉴"
     >
-      <ul className="grid grid-cols-5">
+      <ul className="grid grid-cols-6">
         {ITEMS.map(({ id, to, label, Icon }) => {
           const active = isActive(id);
           return (
