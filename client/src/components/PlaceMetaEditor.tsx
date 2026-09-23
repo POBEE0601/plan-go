@@ -1,3 +1,5 @@
+// 2026-09-23 카테고리 창 오른쪽 닫기 버튼
+// 2026-09-23 좁은 화면 카테고리 창은 하단 탭 위에 통째로 띄워 일정이 잘리지 않게
 // 2026-09-23 저장 모달보다 카테고리 팝오버가 위에 오게
 // 2026-09-23 커스텀 카테고리 추가·삭제, 팝오버를 body 포털로 표시
 // 2026-09-22 일정 행: 카테고리·핀 색·한 줄 소개 (행 높이 고정)
@@ -60,6 +62,7 @@ export default function PlaceMetaEditor({
   const [menuPos, setMenuPos] = useState<{ top: number; left: number } | null>(
     null,
   );
+  const [asSheet, setAsSheet] = useState(false);
   const category = place.category;
   const color = resolvePinColor(place.category, place.pinColor);
 
@@ -73,6 +76,12 @@ export default function PlaceMetaEditor({
       return;
     }
     const placeMenu = () => {
+      const narrow = window.matchMedia('(max-width: 1023px)').matches;
+      setAsSheet(narrow);
+      if (narrow) {
+        setMenuPos({ top: 0, left: 0 });
+        return;
+      }
       const el = boxRef.current;
       if (!el) return;
       const rect = el.getBoundingClientRect();
@@ -81,8 +90,12 @@ export default function PlaceMetaEditor({
         Math.max(8, rect.left),
         window.innerWidth - width - 8,
       );
-      const below = rect.bottom + 6;
-      const top = below + 320 > window.innerHeight ? Math.max(8, rect.top - 326) : below;
+      const menuH = Math.min(menuRef.current?.scrollHeight ?? 420, 480);
+      const spaceBelow = window.innerHeight - rect.bottom - 8;
+      const top =
+        spaceBelow >= menuH || spaceBelow >= rect.top
+          ? rect.bottom + 6
+          : Math.max(8, rect.top - 6 - menuH);
       setMenuPos({ top, left });
     };
     placeMenu();
@@ -178,15 +191,37 @@ export default function PlaceMetaEditor({
         canWrite &&
         menuPos &&
         createPortal(
+          <>
+          {asSheet && (
+            <button
+              type="button"
+              className="fixed inset-0 z-[90] bg-slate-900/40"
+              aria-label="카테고리 닫기"
+              onClick={() => setOpen(false)}
+            />
+          )}
           <div
             ref={menuRef}
-            className="fixed z-[90] w-64 max-h-80 overflow-y-auto rounded-xl border border-slate-200 bg-white p-2 shadow-lg"
-            style={{ top: menuPos.top, left: menuPos.left }}
+            className={
+              asSheet
+                ? 'fixed inset-x-0 z-[91] max-h-[min(36rem,calc(100svh-7.5rem))] overflow-y-auto overscroll-contain rounded-t-2xl border-t border-slate-200 bg-white p-3 pb-4 shadow-lg bottom-[calc(env(safe-area-inset-bottom)+3rem)]'
+                : 'fixed z-[90] max-h-[min(30rem,calc(100svh-1rem))] w-64 overflow-y-auto rounded-xl border border-slate-200 bg-white p-2 shadow-lg'
+            }
+            style={asSheet ? undefined : { top: menuPos.top, left: menuPos.left }}
             onClick={(e) => e.stopPropagation()}
           >
-          <p className="px-1 pb-1 text-[10px] font-semibold text-slate-400">
-            카테고리
-          </p>
+          <div className="mb-1 flex items-center justify-between px-1">
+            <p className="text-[10px] font-semibold text-slate-400">카테고리</p>
+            <button
+              type="button"
+              onClick={() => setOpen(false)}
+              className="flex h-7 items-center gap-0.5 rounded-lg px-1.5 text-[11px] font-medium text-slate-500 hover:bg-slate-100"
+              aria-label="카테고리 창 닫기"
+            >
+              <X className="h-3.5 w-3.5" />
+              닫기
+            </button>
+          </div>
           <div className="flex flex-wrap gap-1">
             {CATEGORY_ORDER.map((cat) => (
               <button
@@ -325,7 +360,8 @@ export default function PlaceMetaEditor({
               />
             ))}
           </div>
-        </div>,
+          </div>
+          </>,
           document.body,
         )}
     </div>
