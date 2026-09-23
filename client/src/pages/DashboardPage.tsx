@@ -1,3 +1,4 @@
+// 2026-09-23 여행 홈 첫 방문에 짧은 안내
 // 2026-09-23 일정 검색은 지도 돋보기로, 상단 검색은 저장만
 // 2026-09-22 상단 메뉴명 제거, 남는 폭에 기간·지역·환율
 // 2026-09-22 여행 홈/일정 제목에 준비·비상 배치
@@ -32,6 +33,7 @@ import PrepBoardModal from '../components/PrepBoardModal';
 import EmergencyModal from '../components/EmergencyModal';
 import MobileTabBar from '../components/MobileTabBar';
 import BootSplash from '../components/BootSplash';
+import FirstVisitTour from '../components/FirstVisitTour';
 import MobileTopBar from '../components/MobileTopBar';
 import MobileToolsPanel from '../components/MobileToolsPanel';
 import SavedPlacesPanel from '../components/SavedPlacesPanel';
@@ -341,6 +343,9 @@ export default function DashboardPage() {
       </div>
 
       <MobileTabBar />
+      {selectedPlan && !isLoading && !plansOpen && !isDesktop && mobileTab === 'home' && (
+        <FirstVisitTour />
+      )}
 
       <InviteModal open={inviteOpen} onClose={() => setInviteOpen(false)} />
       <PrepBoardModal
