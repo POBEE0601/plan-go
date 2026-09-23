@@ -225,6 +225,7 @@ function CompactPoolPlace({
   );
 }
 
+// 2026-09-23 코드가 목록을 스크롤할 때는 선택을 바꾸지 않음
 // 2026-09-23 선택 장소로 맞출 때 시트 전체가 밀리지 않게 목록만 스크롤
 // 2026-09-23 목록 스크롤일 때만 따라가게 해서 카드 선택과 싸우지 않게
 function CompactTimeline({
@@ -256,15 +257,31 @@ function CompactTimeline({
   useEffect(() => {
     const root = scrollRef.current;
     if (!root) return;
-    const onScroll = () => {
+    let timer = 0;
+    const arm = () => {
+      window.clearTimeout(timer);
       userScrollRef.current = true;
     };
-    root.addEventListener('scroll', onScroll, { passive: true });
-    return () => root.removeEventListener('scroll', onScroll);
+    const disarm = () => {
+      window.clearTimeout(timer);
+      timer = window.setTimeout(() => {
+        userScrollRef.current = false;
+      }, 350);
+    };
+    root.addEventListener('pointerdown', arm);
+    root.addEventListener('wheel', arm, { passive: true });
+    root.addEventListener('pointerup', disarm);
+    root.addEventListener('pointercancel', disarm);
+    return () => {
+      window.clearTimeout(timer);
+      root.removeEventListener('pointerdown', arm);
+      root.removeEventListener('wheel', arm);
+      root.removeEventListener('pointerup', disarm);
+      root.removeEventListener('pointercancel', disarm);
+    };
   }, [assignments]);
 
   useEffect(() => {
-    userScrollRef.current = false;
     if (!selectedAssignmentId) return;
     const el = document.getElementById(`day-place-${selectedAssignmentId}`);
     const root = scrollRef.current;

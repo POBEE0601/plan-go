@@ -1,3 +1,4 @@
+// 2026-09-23 가로로 넘기면 가운데 카드만 고르고, 드래그 클릭은 선택을 되돌리지 않음
 // 2026-09-23 카드가 직접 고른 장소는 다시 스크롤하지 않아 선택이 되돌아가지 않음
 // 2026-09-23 스와이프가 끝난 뒤에만 장소를 골라 지도가 왕복하지 않게
 // 2026-09-23 핀 번호는 보이는 장소 순서와 동일
@@ -20,17 +21,18 @@ export default function DayPlaceCarousel({
   onSelect,
 }: DayPlaceCarouselProps) {
   const scrollerRef = useRef<HTMLDivElement>(null);
-  const skipScrollRef = useRef(false);
-  // 캐러셀이 고른 선택은 다시 가운데로 당기지 않는다. 당기면 스냅과 싸워 이전 장소로 돌아간다
-  const pickedHereRef = useRef(false);
+  const aligningRef = useRef(false);
+  const dragRef = useRef({ x: 0, moved: false });
+  // 캐러셀이 고른 id. 효과에서 비우지 않아 같은 선택으로 스크롤을 되돌리지 않는다
+  const pickedIdRef = useRef<string | null>(null);
   const selectedRef = useRef(selectedAssignmentId);
   selectedRef.current = selectedAssignmentId;
   const onSelectRef = useRef(onSelect);
   onSelectRef.current = onSelect;
 
-  const commitCentered = () => {
+  const centeredId = () => {
     const root = scrollerRef.current;
-    if (!root || skipScrollRef.current) return;
+    if (!root) return '';
     const mid = root.scrollLeft + root.clientWidth / 2;
     let bestId = '';
     let bestDist = Number.POSITIVE_INFINITY;
@@ -45,44 +47,39 @@ export default function DayPlaceCarousel({
         bestId = id;
       }
     });
-    if (bestId && bestId !== selectedRef.current) {
-      pickedHereRef.current = true;
-      onSelectRef.current(bestId);
-    }
+    return bestId;
+  };
+
+  const commitCentered = () => {
+    if (aligningRef.current) return;
+    const bestId = centeredId();
+    if (!bestId || bestId === selectedRef.current) return;
+    pickedIdRef.current = bestId;
+    onSelectRef.current(bestId);
   };
 
   useEffect(() => {
     const root = scrollerRef.current;
     if (!root) return;
-    let settle = 0;
-    const onScroll = () => {
-      if (skipScrollRef.current) return;
-      window.clearTimeout(settle);
-      settle = window.setTimeout(commitCentered, 180);
+    let frame = 0;
+    const schedule = () => {
+      if (aligningRef.current) return;
+      dragRef.current.moved = true;
+      window.cancelAnimationFrame(frame);
+      frame = window.requestAnimationFrame(commitCentered);
     };
-    const onScrollEnd = () => {
-      window.clearTimeout(settle);
-      if (skipScrollRef.current) {
-        skipScrollRef.current = false;
-        return;
-      }
-      commitCentered();
-    };
-    root.addEventListener('scroll', onScroll, { passive: true });
-    root.addEventListener('scrollend', onScrollEnd);
+    root.addEventListener('scroll', schedule, { passive: true });
+    root.addEventListener('scrollend', schedule);
     return () => {
-      window.clearTimeout(settle);
-      root.removeEventListener('scroll', onScroll);
-      root.removeEventListener('scrollend', onScrollEnd);
+      window.cancelAnimationFrame(frame);
+      root.removeEventListener('scroll', schedule);
+      root.removeEventListener('scrollend', schedule);
     };
   }, [assignments]);
 
   useEffect(() => {
-    if (pickedHereRef.current) {
-      pickedHereRef.current = false;
-      return;
-    }
     if (!selectedAssignmentId) return;
+    if (pickedIdRef.current === selectedAssignmentId) return;
     const root = scrollerRef.current;
     if (!root) return;
     const card = root.querySelector<HTMLElement>(
@@ -92,16 +89,18 @@ export default function DayPlaceCarousel({
     const cardMid = card.offsetLeft + card.offsetWidth / 2;
     const target = Math.max(0, cardMid - root.clientWidth / 2);
     if (Math.abs(root.scrollLeft - target) < 8) return;
-    skipScrollRef.current = true;
+    aligningRef.current = true;
+    pickedIdRef.current = selectedAssignmentId;
     root.scrollTo({ left: target, behavior: 'smooth' });
     const release = () => {
-      skipScrollRef.current = false;
+      aligningRef.current = false;
     };
     root.addEventListener('scrollend', release, { once: true });
     const backup = window.setTimeout(release, 520);
     return () => {
       window.clearTimeout(backup);
       root.removeEventListener('scrollend', release);
+      aligningRef.current = false;
     };
   }, [selectedAssignmentId]);
 
@@ -116,7 +115,15 @@ export default function DayPlaceCarousel({
   return (
     <div
       ref={scrollerRef}
-      className="flex snap-x snap-mandatory gap-3 overflow-x-auto px-4 pb-3 pt-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+      className="flex snap-x snap-mandatory touch-pan-x gap-3 overflow-x-auto px-4 pb-3 pt-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+      onPointerDown={(e) => {
+        dragRef.current = { x: e.clientX, moved: false };
+      }}
+      onPointerMove={(e) => {
+        if (Math.abs(e.clientX - dragRef.current.x) > 8) {
+          dragRef.current.moved = true;
+        }
+      }}
     >
       {assignments
         .map((assignment) => ({
@@ -135,8 +142,12 @@ export default function DayPlaceCarousel({
             type="button"
             data-carousel-id={assignment.id}
             onClick={() => {
+              if (dragRef.current.moved) {
+                dragRef.current.moved = false;
+                return;
+              }
               if (assignment.id === selectedAssignmentId) return;
-              pickedHereRef.current = true;
+              pickedIdRef.current = assignment.id;
               onSelect(assignment.id);
             }}
             className={`flex w-[min(78vw,20rem)] shrink-0 snap-center items-center gap-3 rounded-2xl border bg-white p-3 text-left shadow-sm transition duration-200 ${
