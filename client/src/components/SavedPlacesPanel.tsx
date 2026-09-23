@@ -1,3 +1,4 @@
+// 2026-09-23 저장 탭에서 일차별로 거르고, 전체는 일차 순으로 정렬
 // 2026-09-23 저장 탭 장소 클릭 시 일정과 같은 메모·카테고리 모달
 // 2026-09-23 저장 탭에서 카테고리·핀 색·한 줄 소개 수정
 // 2026-09-22 저장 탭: 카테고리 칩 + 장소 목록 + 빈 화면
@@ -10,6 +11,8 @@ import { usePlanUiStore } from '../store/usePlanUiStore';
 import {
   categoryEmoji,
   categoryLabel,
+  formatDayMd,
+  getDateForDay,
   getDayCount,
   planCategoryIds,
 } from '../utils/days';
@@ -21,6 +24,8 @@ interface SavedPlacesPanelProps {
   searchOpen?: boolean;
 }
 
+type DayFilter = 'all' | 'none' | number;
+
 export default function SavedPlacesPanel({
   canWrite,
   searchOpen = false,
@@ -29,6 +34,7 @@ export default function SavedPlacesPanel({
   const { selectedPlan, assignToDay, deletePlace } = useTravelStore();
   const activeDay = usePlanUiStore((s) => s.activeDay);
   const [poolFilter, setPoolFilter] = useState<PlaceCategory | 'all'>('all');
+  const [dayFilter, setDayFilter] = useState<DayFilter>('all');
   const [query, setQuery] = useState('');
   const [inspectId, setInspectId] = useState<string | null>(null);
 
@@ -37,17 +43,54 @@ export default function SavedPlacesPanel({
     ? getDayCount(selectedPlan.startDate, selectedPlan.endDate)
     : 1;
 
+  const assignmentsByPlace = useMemo(() => {
+    const map = new Map<string, { dayIndex: number; order: number }[]>();
+    for (const assignment of selectedPlan?.dayAssignments ?? []) {
+      const list = map.get(assignment.placeId) ?? [];
+      list.push({ dayIndex: assignment.dayIndex, order: assignment.order });
+      map.set(assignment.placeId, list);
+    }
+    for (const list of map.values()) {
+      list.sort((a, b) => a.dayIndex - b.dayIndex || a.order - b.order);
+    }
+    return map;
+  }, [selectedPlan?.dayAssignments]);
+
+  useEffect(() => {
+    setDayFilter('all');
+  }, [selectedPlan?.id]);
+
   const filteredPlaces = useMemo(() => {
     const q = query.trim().toLowerCase();
-    return places.filter((p) => {
+    const pickedDay =
+      typeof dayFilter === 'number' && dayFilter >= 1 && dayFilter <= dayCount
+        ? dayFilter
+        : null;
+    const list = places.filter((p) => {
       if (poolFilter !== 'all' && p.category !== poolFilter) return false;
+      const days = assignmentsByPlace.get(p.id) ?? [];
+      if (dayFilter === 'none' && days.length > 0) return false;
+      if (pickedDay !== null && !days.some((a) => a.dayIndex === pickedDay)) {
+        return false;
+      }
       if (!q) return true;
       return (
         p.name.toLowerCase().includes(q) ||
         (p.address ?? '').toLowerCase().includes(q)
       );
     });
-  }, [places, poolFilter, query]);
+    const rank = (placeId: string) => {
+      const rows = assignmentsByPlace.get(placeId) ?? [];
+      if (pickedDay !== null) {
+        return rows.find((a) => a.dayIndex === pickedDay)?.order ?? 0;
+      }
+      if (rows.length === 0) return Number.MAX_SAFE_INTEGER;
+      return rows[0].dayIndex * 100000 + rows[0].order;
+    };
+    return list.sort(
+      (a, b) => rank(a.id) - rank(b.id) || a.name.localeCompare(b.name, 'ko'),
+    );
+  }, [places, poolFilter, query, dayFilter, dayCount, assignmentsByPlace]);
 
   const inspectPlace = inspectId
     ? (places.find((p) => p.id === inspectId) ?? null)
@@ -74,13 +117,8 @@ export default function SavedPlacesPanel({
     };
   }, [inspectPlace]);
 
-  const assignedDaysOf = (placeId: string): number[] => {
-    if (!selectedPlan) return [];
-    return selectedPlan.dayAssignments
-      .filter((a) => a.placeId === placeId)
-      .map((a) => a.dayIndex)
-      .sort((a, b) => a - b);
-  };
+  const assignedDaysOf = (placeId: string): number[] =>
+    (assignmentsByPlace.get(placeId) ?? []).map((a) => a.dayIndex);
 
   if (!selectedPlan) return null;
 
@@ -110,6 +148,43 @@ export default function SavedPlacesPanel({
                 }`}
               >
                 {tab.label}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      <div className="shrink-0 overflow-x-auto border-b border-slate-100">
+        <div className="flex min-w-max gap-1.5 px-3 py-2">
+          {(
+            [
+              { id: 'all' as const, label: '전체 일차' },
+              ...Array.from({ length: dayCount }, (_, i) => {
+                const day = i + 1;
+                return {
+                  id: day as DayFilter,
+                  label: `${day}일차 ${formatDayMd(
+                    getDateForDay(selectedPlan.startDate, day),
+                  )}`,
+                };
+              }),
+              { id: 'none' as const, label: '미배정' },
+            ] as { id: DayFilter; label: string }[]
+          ).map((chip) => {
+            const active = dayFilter === chip.id;
+            return (
+              <button
+                key={String(chip.id)}
+                type="button"
+                aria-pressed={active}
+                onClick={() => setDayFilter(chip.id)}
+                className={`shrink-0 rounded-full border px-2.5 py-1 text-xs ${
+                  active
+                    ? 'border-primary-600 bg-primary-600 font-semibold text-white'
+                    : 'border-slate-400 bg-white text-slate-600'
+                }`}
+              >
+                {chip.label}
               </button>
             );
           })}
