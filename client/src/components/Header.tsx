@@ -14,7 +14,6 @@ import {
   MessageSquareText,
   PanelLeft,
   Rocket,
-  Sparkles,
   User,
   UserPlus,
   X,
@@ -22,6 +21,7 @@ import {
 import { useAuthStore } from '../store/useAuthStore';
 import { useTravelStore } from '../store/useTravelStore';
 import BrandLogo from './BrandLogo';
+import GeminiMark from './GeminiMark';
 import ThemeToggle from './ThemeToggle';
 
 interface HeaderProps {
@@ -93,8 +93,8 @@ export default function Header({
                 }`}
                 aria-current={location.pathname.startsWith('/ai') ? 'page' : undefined}
               >
-                <Sparkles className="h-4 w-4" />
-                AI
+                <GeminiMark className="h-4 w-4" />
+                Plan AI
               </Link>
             )}
             <Link
@@ -256,8 +256,8 @@ export default function Header({
                   onClick={closeNav}
                   className="flex items-center gap-2 rounded-lg px-3 py-3 text-sm text-slate-700 hover:bg-slate-50"
                 >
-                  <Sparkles className="h-4 w-4" />
-                  AI
+                  <GeminiMark className="h-4 w-4" />
+                  Plan AI
                 </Link>
               )}
               <Link

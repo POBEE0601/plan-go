@@ -7,8 +7,8 @@ import {
   MapPin,
   MessageCircle,
   SlidersHorizontal,
-  Sparkles,
 } from 'lucide-react';
+import GeminiMark from './GeminiMark';
 import { useAuthStore } from '../store/useAuthStore';
 import { parseDashboardTab } from '../utils/mobileTabs';
 
@@ -46,8 +46,8 @@ const ITEMS = [
   {
     id: 'ai',
     to: '/ai',
-    label: 'AI',
-    Icon: Sparkles,
+    label: 'Plan AI',
+    Icon: GeminiMark,
   },
 ] as const;
 
@@ -93,7 +93,7 @@ export default function MobileTabBar() {
                   fill={id === 'saved' && active ? 'currentColor' : 'none'}
                 />
                 <span
-                  className={`text-[10px] leading-none ${
+                  className={`whitespace-nowrap text-[10px] leading-none ${
                     active ? 'font-semibold' : 'font-medium'
                   }`}
                 >

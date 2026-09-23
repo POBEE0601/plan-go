@@ -1,9 +1,13 @@
+// 2026-09-23 AI 화면에 하단 홈바를 다시 두고, 말풍선은 둥근 유리처럼
+// 2026-09-23 제미나이 Neural Expressive 대화 화면
 // 2026-09-23 AI 대화: 사용법, 장소 선택 추가, 이동 메모 초안
 import { useEffect, useRef, useState } from 'react';
-import { Loader2, SendHorizontal, Sparkles } from 'lucide-react';
+import { SendHorizontal } from 'lucide-react';
 import Header from '../components/Header';
+import GeminiMark from '../components/GeminiMark';
 import MobileTabBar from '../components/MobileTabBar';
 import MobileTopBar from '../components/MobileTopBar';
+import { useAuthStore } from '../store/useAuthStore';
 import { useTravelStore } from '../store/useTravelStore';
 import type { AiAction, AiMemoAction, AiPlacesAction } from '../types/ai';
 import type { PlaceSearchResult } from '../types/travel';
@@ -29,6 +33,7 @@ export default function AiPage() {
   const selectPlan = useTravelStore((s) => s.selectPlan);
   const refreshSelectedPlan = useTravelStore((s) => s.refreshSelectedPlan);
   const canWrite = myRole === 'owner' || myRole === 'editor';
+  const userName = useAuthStore((s) => s.user?.name);
 
   const [messages, setMessages] = useState<ChatItem[]>([]);
   const [input, setInput] = useState('');
@@ -92,24 +97,16 @@ export default function AiPage() {
   const suggestions = buildSuggestions(selectedPlan?.regionName, selectedPlan?.places.length ?? 0);
 
   return (
-    <div className="flex h-svh flex-col overflow-hidden bg-slate-50">
+    <div className={`gemini-shell flex h-svh flex-col overflow-hidden ${pending ? 'is-thinking' : ''}`}>
+      <div className="gemini-aurora" aria-hidden />
       <div className="hidden lg:block">
         <Header />
       </div>
-      <MobileTopBar
-        title="AI"
-        meta={
-          selectedPlan ? (
-            <span className="truncate">{selectedPlan.title}</span>
-          ) : (
-            <span>사용법을 묻거나, 여행을 고른 뒤 장소·이동을 물어보세요.</span>
-          )
-        }
-      />
+      <MobileTopBar title="Plan AI" meta={<span className="truncate">{selectedPlan?.title ?? '여행 도우미'}</span>} />
 
-      <div className="flex min-h-0 flex-1 flex-col">
-        <div className="flex items-center gap-2 border-b border-slate-200 bg-white px-3 py-2 sm:px-4">
-          <label className="shrink-0 text-xs font-medium text-slate-500" htmlFor="ai-plan">
+      <div className="relative z-10 flex min-h-0 flex-1 flex-col">
+        <div className="gemini-toolbar">
+          <label className="shrink-0" htmlFor="ai-plan">
             여행
           </label>
           <select
@@ -118,7 +115,6 @@ export default function AiPage() {
             onChange={(e) => {
               if (e.target.value) void selectPlan(e.target.value);
             }}
-            className="h-9 min-w-0 flex-1 rounded-lg border border-slate-200 bg-white px-2 text-sm text-slate-800"
           >
             {travelPlans.length === 0 && <option value="">여행 없음</option>}
             {travelPlans.map((plan) => (
@@ -127,28 +123,21 @@ export default function AiPage() {
               </option>
             ))}
           </select>
-          {selectedPlan && !canWrite && (
-            <span className="shrink-0 rounded bg-slate-100 px-2 py-1 text-[11px] text-slate-500">
-              읽기 전용
-            </span>
-          )}
+          {selectedPlan && !canWrite && <span className="gemini-readonly">읽기 전용</span>}
         </div>
 
-        <div ref={listRef} className="min-h-0 flex-1 space-y-3 overflow-y-auto px-3 py-3 sm:px-4">
+        <div
+          ref={listRef}
+          className={`gemini-thread ${messages.length === 0 ? 'is-empty' : ''}`}
+        >
           {messages.length === 0 && (
-            <div className="mx-auto max-w-lg pt-6 text-center">
-              <Sparkles className="mx-auto mb-3 h-8 w-8 text-primary-600" />
-              <p className="text-sm font-medium text-slate-700">
-                사용법, 주변 장소, 이동 방법을 물어볼 수 있습니다.
-              </p>
-              <div className="mt-4 flex flex-col gap-2">
+            <div className="gemini-hero">
+              <GeminiMark className="gemini-hero-mark" />
+              <h2>안녕하세요{userName ? `, ${userName}` : ''}</h2>
+              <p>장소, 이동, 사용법을 물어보세요.</p>
+              <div className="gemini-chips">
                 {suggestions.map((item) => (
-                  <button
-                    key={item}
-                    type="button"
-                    onClick={() => void send(item)}
-                    className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-left text-sm text-slate-700 hover:border-primary-200 hover:bg-primary-50"
-                  >
+                  <button key={item} type="button" onClick={() => void send(item)}>
                     {item}
                   </button>
                 ))}
@@ -156,58 +145,55 @@ export default function AiPage() {
             </div>
           )}
 
-          {messages.map((item) => (
-            <div key={item.id} className={item.role === 'user' ? 'flex justify-end' : ''}>
-              <div
-                className={
-                  item.role === 'user'
-                    ? 'max-w-[85%] rounded-2xl bg-primary-600 px-3 py-2 text-sm text-white'
-                    : 'max-w-full'
-                }
-              >
-                {item.role === 'model' ? (
-                  <p className="whitespace-pre-wrap rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm leading-6 text-slate-800">
-                    {item.text}
-                  </p>
-                ) : (
-                  <p className="whitespace-pre-wrap">{item.text}</p>
-                )}
-                {item.actions?.map((action, index) =>
-                  action.type === 'places' ? (
-                    <PlacesCard
-                      key={`${item.id}-places-${index}`}
-                      action={action}
-                      canWrite={canWrite}
-                      planId={selectedPlan?.id ?? null}
-                      startDate={selectedPlan?.startDate}
-                      endDate={selectedPlan?.endDate}
-                      onChanged={refreshSelectedPlan}
-                    />
-                  ) : (
-                    <MemoCard
-                      key={`${item.id}-memo-${index}`}
-                      action={action}
-                      canWrite={canWrite}
-                      planId={selectedPlan?.id ?? null}
-                      places={selectedPlan?.places ?? []}
-                      onChanged={refreshSelectedPlan}
-                    />
-                  ),
-                )}
-              </div>
-            </div>
-          ))}
+          <div className="gemini-column">
+            {messages.map((item) =>
+              item.role === 'user' ? (
+                <div key={item.id} className="gemini-user">
+                  <p>{item.text}</p>
+                </div>
+              ) : (
+                <div key={item.id} className="gemini-model">
+                  <GeminiMark className="mt-0.5 h-6 w-6 shrink-0" />
+                  <div className="min-w-0 flex-1">
+                    <p className="gemini-prose">{item.text}</p>
+                    {item.actions?.map((action, index) =>
+                      action.type === 'places' ? (
+                        <PlacesCard
+                          key={`${item.id}-places-${index}`}
+                          action={action}
+                          canWrite={canWrite}
+                          planId={selectedPlan?.id ?? null}
+                          startDate={selectedPlan?.startDate}
+                          endDate={selectedPlan?.endDate}
+                          onChanged={refreshSelectedPlan}
+                        />
+                      ) : (
+                        <MemoCard
+                          key={`${item.id}-memo-${index}`}
+                          action={action}
+                          canWrite={canWrite}
+                          planId={selectedPlan?.id ?? null}
+                          places={selectedPlan?.places ?? []}
+                          onChanged={refreshSelectedPlan}
+                        />
+                      ),
+                    )}
+                  </div>
+                </div>
+              ),
+            )}
 
-          {pending && (
-            <p className="flex items-center gap-2 text-sm text-slate-400">
-              <Loader2 className="h-4 w-4 animate-spin" />
-              답변 작성 중
-            </p>
-          )}
+            {pending && (
+              <div className="gemini-model">
+                <GeminiMark className="gemini-spin h-6 w-6 shrink-0" />
+                <p className="gemini-muted">생각 중</p>
+              </div>
+            )}
+          </div>
         </div>
 
         <form
-          className="flex items-end gap-2 border-t border-slate-200 bg-white px-3 py-2 sm:px-4"
+          className="gemini-composer"
           onSubmit={(e) => {
             e.preventDefault();
             void send(input);
@@ -223,15 +209,9 @@ export default function AiPage() {
               }
             }}
             rows={1}
-            placeholder="예: 롯폰기 근처 맛집, 공항에서 숙소까지"
-            className="max-h-28 min-h-10 flex-1 resize-none rounded-xl border border-slate-200 px-3 py-2 text-sm leading-5"
+            placeholder="Plan AI에게 물어보기"
           />
-          <button
-            type="submit"
-            disabled={pending || !input.trim()}
-            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary-600 text-white disabled:bg-slate-200"
-            aria-label="보내기"
-          >
+          <button type="submit" disabled={pending || !input.trim()} aria-label="보내기">
             <SendHorizontal className="h-4 w-4" />
           </button>
         </form>
@@ -334,15 +314,15 @@ function PlacesCard({
   };
 
   return (
-    <div className="mt-2 rounded-2xl border border-slate-200 bg-white p-3">
-      <p className="text-xs font-medium text-slate-500">검색 · {action.query}</p>
+    <div className="gemini-card">
+      <p className="gemini-kicker">검색 · {action.query}</p>
       <ul className="mt-2 space-y-2">
         {action.items.length === 0 && (
-          <li className="text-sm text-slate-400">검색 결과가 없습니다.</li>
+          <li className="gemini-muted text-sm">검색 결과가 없습니다.</li>
         )}
         {action.items.map((item) => (
           <li key={item.googlePlaceId}>
-            <label className="flex cursor-pointer items-start gap-2 rounded-xl border border-slate-100 px-2 py-2 hover:bg-slate-50">
+            <label className="gemini-place">
               <input
                 type="checkbox"
                 className="mt-1"
@@ -362,17 +342,15 @@ function PlacesCard({
                   className="h-12 w-12 shrink-0 rounded-lg object-cover"
                 />
               ) : (
-                <span className="h-12 w-12 shrink-0 rounded-lg bg-slate-100" />
+                <span className="h-12 w-12 shrink-0 rounded-lg gemini-photo" />
               )}
               <span className="min-w-0">
-                <span className="block truncate text-sm font-medium text-slate-800">
-                  {item.name}
-                </span>
-                <span className="block text-[11px] text-slate-500">
+                <span className="block truncate text-sm font-medium">{item.name}</span>
+                <span className="gemini-muted block text-[11px]">
                   {categoryLabel(item.category)}
                   {item.rating != null ? ` · ${item.rating.toFixed(1)}` : ''}
                 </span>
-                <span className="block truncate text-[11px] text-slate-400">
+                <span className="gemini-muted block truncate text-[11px]">
                   {item.address}
                 </span>
               </span>
@@ -385,7 +363,7 @@ function PlacesCard({
           <select
             value={dayIndex}
             onChange={(e) => setDayIndex(Number(e.target.value))}
-            className="h-9 min-w-0 flex-1 rounded-lg border border-slate-200 px-2 text-sm"
+            className="gemini-field h-9 min-w-0 flex-1 px-3 text-sm"
             aria-label="추가할 날짜"
           >
             {Array.from({ length: dayCount }, (_, i) => i + 1).map((day) => (
@@ -398,13 +376,13 @@ function PlacesCard({
             type="button"
             onClick={() => void addSelected()}
             disabled={busy || selected.length === 0}
-            className="h-9 shrink-0 rounded-lg bg-slate-900 px-3 text-sm font-medium text-white disabled:bg-slate-200"
+            className="gemini-action"
           >
             {busy ? '추가 중' : `${selected.length}곳 추가`}
           </button>
         </div>
       )}
-      {note && <p className="mt-2 text-xs text-slate-600">{note}</p>}
+      {note && <p className="gemini-muted mt-2 text-xs">{note}</p>}
     </div>
   );
 }
@@ -479,11 +457,11 @@ function MemoCard({
   };
 
   return (
-    <div className="mt-2 rounded-2xl border border-slate-200 bg-white p-3">
-      <p className="text-xs font-medium text-slate-500">
+    <div className="gemini-card">
+      <p className="gemini-kicker">
         {action.fromName} → {action.toName}
       </p>
-      <label className="mt-2 block text-[11px] text-slate-500" htmlFor={`memo-${action.placeId}`}>
+      <label className="gemini-muted mt-2 block text-[11px]" htmlFor={`memo-${action.placeId}`}>
         이 장소 메모에 이어 붙입니다
       </label>
       <select
@@ -491,7 +469,7 @@ function MemoCard({
         value={placeId}
         onChange={(e) => setPlaceId(e.target.value)}
         disabled={!canWrite || saved}
-        className="mt-1 h-9 w-full rounded-lg border border-slate-200 px-2 text-sm"
+        className="gemini-field mt-1 h-9 w-full px-3 text-sm"
       >
         {places.map((place) => (
           <option key={place.id} value={place.id}>
@@ -504,19 +482,19 @@ function MemoCard({
         onChange={(e) => setDraft(e.target.value)}
         readOnly={!canWrite || saved}
         rows={6}
-        className="mt-2 w-full rounded-lg border border-slate-200 px-2 py-2 text-sm leading-5"
+        className="gemini-field mt-2 w-full px-3 py-2 text-sm leading-5"
       />
       {canWrite && (
         <button
           type="button"
           onClick={() => void save()}
           disabled={busy || saved || !draft.trim()}
-          className="mt-2 h-9 rounded-lg bg-slate-900 px-3 text-sm font-medium text-white disabled:bg-slate-200"
+          className="gemini-action mt-2"
         >
           {saved ? '추가됨' : busy ? '저장 중' : '메모에 추가'}
         </button>
       )}
-      {note && <p className="mt-2 text-xs text-slate-600">{note}</p>}
+      {note && <p className="gemini-muted mt-2 text-xs">{note}</p>}
     </div>
   );
 }
