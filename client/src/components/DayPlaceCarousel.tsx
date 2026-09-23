@@ -1,3 +1,5 @@
+// 2026-09-23 카드가 직접 고른 장소는 다시 스크롤하지 않아 선택이 되돌아가지 않음
+// 2026-09-23 스와이프가 끝난 뒤에만 장소를 골라 지도가 왕복하지 않게
 // 2026-09-23 핀 번호는 보이는 장소 순서와 동일
 // 2026-09-23 여행 홈: 가로 스와이프 카드가 지도 초점을 바꿈
 import { useEffect, useRef } from 'react';
@@ -19,25 +21,14 @@ export default function DayPlaceCarousel({
 }: DayPlaceCarouselProps) {
   const scrollerRef = useRef<HTMLDivElement>(null);
   const skipScrollRef = useRef(false);
+  // 캐러셀이 고른 선택은 다시 가운데로 당기지 않는다. 당기면 스냅과 싸워 이전 장소로 돌아간다
+  const pickedHereRef = useRef(false);
+  const selectedRef = useRef(selectedAssignmentId);
+  selectedRef.current = selectedAssignmentId;
+  const onSelectRef = useRef(onSelect);
+  onSelectRef.current = onSelect;
 
-  useEffect(() => {
-    if (!selectedAssignmentId) return;
-    const root = scrollerRef.current;
-    if (!root) return;
-    const card = root.querySelector<HTMLElement>(
-      `[data-carousel-id="${selectedAssignmentId}"]`,
-    );
-    if (!card) return;
-    const cardMid = card.offsetLeft + card.offsetWidth / 2;
-    const target = cardMid - root.clientWidth / 2;
-    skipScrollRef.current = true;
-    root.scrollTo({ left: Math.max(0, target), behavior: 'smooth' });
-    window.setTimeout(() => {
-      skipScrollRef.current = false;
-    }, 280);
-  }, [selectedAssignmentId]);
-
-  const pickCentered = () => {
+  const commitCentered = () => {
     const root = scrollerRef.current;
     if (!root || skipScrollRef.current) return;
     const mid = root.scrollLeft + root.clientWidth / 2;
@@ -54,8 +45,65 @@ export default function DayPlaceCarousel({
         bestId = id;
       }
     });
-    if (bestId && bestId !== selectedAssignmentId) onSelect(bestId);
+    if (bestId && bestId !== selectedRef.current) {
+      pickedHereRef.current = true;
+      onSelectRef.current(bestId);
+    }
   };
+
+  useEffect(() => {
+    const root = scrollerRef.current;
+    if (!root) return;
+    let settle = 0;
+    const onScroll = () => {
+      if (skipScrollRef.current) return;
+      window.clearTimeout(settle);
+      settle = window.setTimeout(commitCentered, 180);
+    };
+    const onScrollEnd = () => {
+      window.clearTimeout(settle);
+      if (skipScrollRef.current) {
+        skipScrollRef.current = false;
+        return;
+      }
+      commitCentered();
+    };
+    root.addEventListener('scroll', onScroll, { passive: true });
+    root.addEventListener('scrollend', onScrollEnd);
+    return () => {
+      window.clearTimeout(settle);
+      root.removeEventListener('scroll', onScroll);
+      root.removeEventListener('scrollend', onScrollEnd);
+    };
+  }, [assignments]);
+
+  useEffect(() => {
+    if (pickedHereRef.current) {
+      pickedHereRef.current = false;
+      return;
+    }
+    if (!selectedAssignmentId) return;
+    const root = scrollerRef.current;
+    if (!root) return;
+    const card = root.querySelector<HTMLElement>(
+      `[data-carousel-id="${selectedAssignmentId}"]`,
+    );
+    if (!card) return;
+    const cardMid = card.offsetLeft + card.offsetWidth / 2;
+    const target = Math.max(0, cardMid - root.clientWidth / 2);
+    if (Math.abs(root.scrollLeft - target) < 8) return;
+    skipScrollRef.current = true;
+    root.scrollTo({ left: target, behavior: 'smooth' });
+    const release = () => {
+      skipScrollRef.current = false;
+    };
+    root.addEventListener('scrollend', release, { once: true });
+    const backup = window.setTimeout(release, 520);
+    return () => {
+      window.clearTimeout(backup);
+      root.removeEventListener('scrollend', release);
+    };
+  }, [selectedAssignmentId]);
 
   if (assignments.length === 0) {
     return (
@@ -68,7 +116,6 @@ export default function DayPlaceCarousel({
   return (
     <div
       ref={scrollerRef}
-      onScroll={pickCentered}
       className="flex snap-x snap-mandatory gap-3 overflow-x-auto px-4 pb-3 pt-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
     >
       {assignments
@@ -87,7 +134,11 @@ export default function DayPlaceCarousel({
             key={assignment.id}
             type="button"
             data-carousel-id={assignment.id}
-            onClick={() => onSelect(assignment.id)}
+            onClick={() => {
+              if (assignment.id === selectedAssignmentId) return;
+              pickedHereRef.current = true;
+              onSelect(assignment.id);
+            }}
             className={`flex w-[min(78vw,20rem)] shrink-0 snap-center items-center gap-3 rounded-2xl border bg-white p-3 text-left shadow-sm transition duration-200 ${
               active
                 ? 'border-primary-400 ring-1 ring-primary-200'

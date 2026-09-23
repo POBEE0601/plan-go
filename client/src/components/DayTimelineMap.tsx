@@ -1,3 +1,5 @@
+// 2026-09-23 장소 이동은 panTo 한 번만. 줌·fitBounds 를 같이 바꾸면 타일이 깜빡인다
+// 2026-09-23 장소가 바뀌면 줌은 유지한 채 한 번만 패닝
 // 2026-09-23 장소 이동은 한 번만 패닝하고 핀은 보이는 영역 중앙
 // 2026-09-23 핀 팝업: 평점, 다크·라이트 색
 // 2026-09-23 하단 시트 가림을 빼고 선택 장소로 카메라를 맞춤
@@ -10,8 +12,8 @@
 // 2026-09-03 워크스페이스 캔버스: 검색 마커·빈 날에도 지도 유지
 // 2026-09-04 목록형 패널용 헤더(showHeader)
 // 2026-09-04 다크 테마 지도 스타일
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { GoogleMap, Marker, OverlayView, Polyline } from '@react-google-maps/api';
+import { useEffect, useMemo, useRef, useState, type MutableRefObject } from 'react';
+import { GoogleMap, Marker, OverlayView, Polyline, useGoogleMap } from '@react-google-maps/api';
 import { Loader2, MapPin, Star, X } from 'lucide-react';
 import { useGoogleMaps } from '../hooks/useGoogleMaps';
 import { useMapUiStore } from '../store/useMapUiStore';
@@ -45,6 +47,7 @@ const mapContainerStyle = { width: '100%', height: '100%' };
 
 const DEFAULT_PAD = { top: 72, right: 48, bottom: 24, left: 16 };
 const FOLLOW_ZOOM = 13;
+const focusWait = new WeakMap<google.maps.Map, number>();
 
 function shiftedCenter(
   map: google.maps.Map,
@@ -71,32 +74,61 @@ function focusCamera(
   target: google.maps.LatLngLiteral,
   padding: google.maps.Padding,
 ) {
-  const apply = () => {
-    const center = shiftedCenter(map, target, padding, FOLLOW_ZOOM);
-    const zoom = map.getZoom();
+  const pending = focusWait.get(map);
+  if (pending) {
+    window.clearTimeout(pending);
+    focusWait.delete(map);
+  }
+
+  const pan = () => {
+    const projected = Boolean(map.getProjection());
+    const center = projected
+      ? shiftedCenter(map, target, padding, map.getZoom() ?? FOLLOW_ZOOM)
+      : target;
     const current = map.getCenter();
     const sameSpot =
       current != null &&
-      Math.abs(current.lat() - center.lat) < 0.0004 &&
-      Math.abs(current.lng() - center.lng) < 0.0004;
-    if (zoom != null && Math.abs(zoom - FOLLOW_ZOOM) < 0.25) {
-      if (sameSpot) return;
+      Math.abs(current.lat() - center.lat) < 0.00015 &&
+      Math.abs(current.lng() - center.lng) < 0.00015;
+    if (!sameSpot) {
+      // 줌을 같이 바꾸면 타일이 다시 불러와져 깜빡인다. 중심만 애니메이션
       map.panTo(center);
-      return;
     }
-    if (typeof map.moveCamera === 'function') {
-      map.moveCamera({ center, zoom: FOLLOW_ZOOM });
-      return;
-    }
-    map.setZoom(FOLLOW_ZOOM);
-    map.setCenter(center);
+    return projected;
   };
-  // 투영이 없으면 빈 중심으로 먼저 점프하지 않고 한 번만 기다린다
-  if (!map.getProjection()) {
-    google.maps.event.addListenerOnce(map, 'idle', apply);
-    return;
+
+  // 투영이 아직 없으면 좌표로 먼저 이동하고, 준비되면 시트 높이만큼 한 번만 보정
+  if (!pan()) {
+    const timer = window.setTimeout(() => {
+      focusWait.delete(map);
+      pan();
+    }, 280);
+    focusWait.set(map, timer);
   }
-  apply();
+}
+
+function MapBind({
+  mapRef,
+  onReady,
+}: {
+  mapRef: MutableRefObject<google.maps.Map | null>;
+  onReady: (ready: boolean) => void;
+}) {
+  const map = useGoogleMap();
+  useEffect(() => {
+    if (!map) return;
+    mapRef.current = map;
+    onReady(true);
+    const t = window.setTimeout(() => {
+      google.maps.event.trigger(map, 'resize');
+    }, 80);
+    return () => {
+      window.clearTimeout(t);
+      if (mapRef.current === map) mapRef.current = null;
+      onReady(false);
+    };
+  }, [map, mapRef, onReady]);
+  return null;
 }
 
 export default function DayTimelineMap({
@@ -199,6 +231,15 @@ export default function DayTimelineMap({
     });
   }, [theme]);
 
+  const lineOptions = useMemo(
+    () => ({
+      strokeColor: theme === 'dark' ? '#60a5fa' : '#2563eb',
+      strokeWeight: 5,
+      strokeOpacity: 0.9,
+    }),
+    [theme],
+  );
+
   // 연속 장소 사이 차량 도로 경로. 실패하면 직선으로 이음
   useEffect(() => {
     if (!isLoaded || places.length < 2) {
@@ -228,11 +269,18 @@ export default function DayTimelineMap({
     };
   }, [isLoaded, placeKey, places]);
 
+  const focusIdRef = useRef(focusPlaceId);
+  focusIdRef.current = focusPlaceId;
+  const followedRef = useRef(false);
   useEffect(() => {
     const map = mapRef.current;
     const list = placesRef.current;
     if (!map || !mapReady || !isLoaded) return;
-    if (focusPlaceId && list.some((p) => p.id === focusPlaceId)) return;
+    // 장소를 따라간 뒤에는 전체 bounds 로 되돌리지 않는다. 타일이 깜빡인다
+    if (followedRef.current) return;
+    if (focusIdRef.current && list.some((p) => p.id === focusIdRef.current)) {
+      return;
+    }
 
     if (list.length === 1) {
       map.setCenter({ lat: list[0].lat, lng: list[0].lng });
@@ -252,7 +300,7 @@ export default function DayTimelineMap({
 
     map.setCenter(fallbackCenter);
     map.setZoom(11);
-  }, [isLoaded, mapReady, placeKey, paths, fallbackCenter, focusPlaceId]);
+  }, [isLoaded, mapReady, placeKey, paths, fallbackCenter]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -268,7 +316,15 @@ export default function DayTimelineMap({
     if (!map || !mapReady || !isLoaded || focusLat == null || focusLng == null) {
       return;
     }
-    focusCamera(map, { lat: focusLat, lng: focusLng }, paddingRef.current);
+    const lat = focusLat;
+    const lng = focusLng;
+    followedRef.current = true;
+    const t = window.setTimeout(() => {
+      const live = mapRef.current;
+      if (!live) return;
+      focusCamera(live, { lat, lng }, paddingRef.current);
+    }, 70);
+    return () => window.clearTimeout(t);
   }, [
     focusPlaceId,
     focusToken,
@@ -312,11 +368,10 @@ export default function DayTimelineMap({
           mapContainerStyle={mapContainerStyle}
           center={camera.center}
           zoom={camera.zoom}
-          onLoad={(map) => {
-            mapRef.current = map;
-            setMapReady(true);
+          onLoad={() => {
             window.setTimeout(() => {
-              google.maps.event.trigger(map, 'resize');
+              const map = mapRef.current;
+              if (map) google.maps.event.trigger(map, 'resize');
             }, 80);
           }}
           onUnmount={() => {
@@ -325,16 +380,13 @@ export default function DayTimelineMap({
           }}
           options={mapOptions}
         >
+          <MapBind mapRef={mapRef} onReady={setMapReady} />
           {paths.map((path, i) =>
             path.length > 1 ? (
               <Polyline
                 key={`path-${i}`}
                 path={path}
-                options={{
-                    strokeColor: theme === 'dark' ? '#60a5fa' : '#2563eb',
-                  strokeWeight: 5,
-                  strokeOpacity: 0.9,
-                }}
+                options={lineOptions}
               />
             ) : null,
           )}
