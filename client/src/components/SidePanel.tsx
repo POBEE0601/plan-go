@@ -1,3 +1,4 @@
+// 2026-09-23 여행 날짜는 시작일 이후만 고르고 칸 밖으로 넘치지 않게
 // 2026-09-22 모바일 드로어 z-index를 하단 홈바 위로
 // 2026-09-04 초대 멤버 휴지통은 나가기, 삭제는 방장만
 // 2026-09-04 장기간 여행: 접힌 레일 일차 압축
@@ -24,6 +25,7 @@ import {
   X,
 } from 'lucide-react';
 import EmergencyModal from './EmergencyModal';
+import TripDateField from './TripDateField';
 import DayAccordion from './DayAccordion';
 import { useTravelStore } from '../store/useTravelStore';
 import { useAuthStore } from '../store/useAuthStore';
@@ -412,21 +414,21 @@ export default function SidePanel({ open = true, onClose }: SidePanelProps) {
               )}
             </div>
 
-            <input
-              type="date"
+            <TripDateField
               value={startDate}
-              onChange={(e) => setStartDate(e.target.value)}
-              className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-primary-500 focus:ring-1 focus:ring-primary-500"
-              required
+              onChange={(next) => {
+                setStartDate(next);
+                if (endDate && next > endDate) setEndDate(next);
+              }}
+              max={endDate || undefined}
+              placeholder="시작일"
               disabled={isSubmitting}
             />
-            <input
-              type="date"
+            <TripDateField
               value={endDate}
-              onChange={(e) => setEndDate(e.target.value)}
-              min={startDate}
-              className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-primary-500 focus:ring-1 focus:ring-primary-500"
-              required
+              onChange={setEndDate}
+              min={startDate || undefined}
+              placeholder="종료일"
               disabled={isSubmitting}
             />
             <button

@@ -157,6 +157,20 @@ html.dark .border-slate-200 {
 html.dark .border-slate-100 {
   border-color: #1e293b;
 }
+
+/* 2026-09-23 입력창 테두리를 배경보다 진하게. 테두리 없는 한 줄 입력은 제외 */
+input:not([type='checkbox']):not([type='radio']):not([type='file']):not(.border-0),
+select,
+textarea:not(.border-0) {
+  border-color: #94a3b8;
+}
+
+html.dark input:not([type='checkbox']):not([type='radio']):not([type='file']):not(.border-0),
+html.dark select,
+html.dark textarea:not(.border-0) {
+  border-color: #94a3b8;
+  background-color: #0f172a;
+}
 html.dark .border-primary-200,
 html.dark .border-primary-300 {
   border-color: #1d4ed8;

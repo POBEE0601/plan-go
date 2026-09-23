@@ -225,6 +225,8 @@ function CompactPoolPlace({
   );
 }
 
+// 2026-09-23 투명한 검색 버튼은 테두리를 더 굵게
+// 2026-09-23 지도 검색 버튼을 테마 안에서 더 잘 보이게
 // 2026-09-23 코드가 목록을 스크롤할 때는 선택을 바꾸지 않음
 // 2026-09-23 선택 장소로 맞출 때 시트 전체가 밀리지 않게 목록만 스크롤
 // 2026-09-23 목록 스크롤일 때만 따라가게 해서 카드 선택과 싸우지 않게
@@ -329,7 +331,7 @@ function CompactTimeline({
         {assignments.length === 0 && (
           <p className="px-2 py-8 text-center text-xs text-slate-400">
             {canWrite
-              ? '풀에서 드래그하거나 추가해 이 날에 담으세요'
+              ? '지도의 돋보기로 장소를 찾아 이 날에 담으세요'
               : '아직 배정된 장소가 없습니다'}
           </p>
         )}
@@ -821,10 +823,10 @@ export default function PlacePoolBoard({
         <button
           type="button"
           onClick={toggleMapSearch}
-          className={`pointer-events-auto flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border shadow-sm ${
+          className={`pointer-events-auto flex h-11 w-11 shrink-0 items-center justify-center rounded-xl shadow-md ${
             mapSearchOpen
-              ? 'border-primary-200 bg-primary-600 text-white'
-              : 'border-slate-200 bg-white/95 text-slate-700'
+              ? 'border border-primary-200 bg-primary-600 text-white'
+              : 'border-2 border-primary-400 bg-primary-50 text-primary-700'
           }`}
           aria-label={mapSearchOpen ? '검색 닫기' : '장소 검색'}
           aria-pressed={mapSearchOpen}

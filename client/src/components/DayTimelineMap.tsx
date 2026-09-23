@@ -1,3 +1,4 @@
+// 2026-09-23 기본 확대 버튼 대신 테마에 맞는 작은 버튼
 // 2026-09-23 장소 이동은 panTo 한 번만. 줌·fitBounds 를 같이 바꾸면 타일이 깜빡인다
 // 2026-09-23 장소가 바뀌면 줌은 유지한 채 한 번만 패닝
 // 2026-09-23 장소 이동은 한 번만 패닝하고 핀은 보이는 영역 중앙
@@ -22,6 +23,7 @@ import { useThemeStore } from '../store/useThemeStore';
 import { fetchJsRoute } from '../utils/jsDirections';
 import { DARK_MAP_STYLES } from '../utils/mapTheme';
 import { numberedPinIcon, pinColorOf } from '../utils/mapPin';
+import MapZoomButtons from './MapZoomButtons';
 import { categoryBadge } from '../utils/days';
 import type { Place, PlaceSearchResult } from '../types/travel';
 
@@ -177,14 +179,11 @@ export default function DayTimelineMap({
       rotateControl: false,
       scaleControl: false,
       cameraControl: false,
-      zoomControl: true,
-      zoomControlOptions: isLoaded
-        ? { position: google.maps.ControlPosition.RIGHT_TOP }
-        : undefined,
+      zoomControl: false,
       clickableIcons: false,
       styles: theme === 'dark' ? DARK_MAP_STYLES : [],
     }),
-    [isLoaded, theme],
+    [theme],
   );
 
   const fallbackCenter = useMemo(() => {
@@ -467,8 +466,11 @@ export default function DayTimelineMap({
               </div>
             </OverlayView>
           )}
-        </GoogleMap>
-      )}
+          </GoogleMap>
+        )}
+        {isLoaded && !loadError && (
+          <MapZoomButtons mapRef={mapRef} theme={theme} />
+        )}
     </div>
   );
 

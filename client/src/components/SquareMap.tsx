@@ -1,3 +1,4 @@
+// 2026-09-23 기본 확대 버튼 대신 테마에 맞는 작은 버튼
 // 2026-09-23 선택 일정 장소로 지도가 따라감
 // 2026-09-22 카테고리 색 핀 + 장소명·카테고리 정보창
 // 2026-09-01 모바일: 전체 화면 오버레이, 데스크톱은 우측 정사각
@@ -12,6 +13,7 @@ import { usePlanUiStore } from '../store/usePlanUiStore';
 import { useGoogleMaps } from '../hooks/useGoogleMaps';
 import { useThemeStore } from '../store/useThemeStore';
 import { DARK_MAP_STYLES } from '../utils/mapTheme';
+import MapZoomButtons from './MapZoomButtons';
 import { numberedPinIcon, pinColorOf } from '../utils/mapPin';
 import { categoryBadge } from '../utils/days';
 import type { Place, PlaceSearchResult } from '../types/travel';
@@ -127,7 +129,7 @@ export default function SquareMap({ onClose }: SquareMapProps) {
               streetViewControl: false,
               mapTypeControl: false,
               fullscreenControl: false,
-              zoomControl: true,
+              zoomControl: false,
               styles: theme === 'dark' ? DARK_MAP_STYLES : [],
             }}
           >
@@ -210,6 +212,9 @@ export default function SquareMap({ onClose }: SquareMapProps) {
                   </OverlayView>
                 ))}
           </GoogleMap>
+        )}
+        {isLoaded && !loadError && (
+          <MapZoomButtons mapRef={mapRef} theme={theme} />
         )}
       </div>
 
