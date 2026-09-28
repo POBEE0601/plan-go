@@ -34,6 +34,8 @@ export interface Place {
   photoUrl?: string;
   memo?: string;
   types?: string[];
+  // 2026-09-28 계획에 넣은 시각. 예전 장소는 없을 수 있다
+  createdAt?: string;
 }
 
 export interface DayAssignment {
@@ -66,6 +68,22 @@ export interface PrepItem {
   sortOrder: number;
   isTemplate: boolean;
   detail: string;
+}
+
+// 2026-09-28 여행 중 직접 입력 지출
+export type ExpenseMethod = 'cash' | 'card' | 'other';
+
+export interface PlanExpense {
+  id: string;
+  planId: string;
+  dayIndex: number | null;
+  placeId: string | null;
+  amount: number;
+  currency: string;
+  merchant: string;
+  method: ExpenseMethod;
+  note: string;
+  createdAt: string;
 }
 
 export interface TravelPlan {

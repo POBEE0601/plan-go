@@ -36,7 +36,8 @@ CREATE TABLE IF NOT EXISTS places (
   photo_url TEXT,
   memo TEXT,
   pin_color TEXT,
-  types JSONB
+  types JSONB,
+  created_at TIMESTAMPTZ
 );
 
 CREATE TABLE IF NOT EXISTS day_assignments (

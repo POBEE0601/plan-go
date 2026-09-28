@@ -10,11 +10,13 @@ import type { DeployStatus, ReleasePost } from '../types/release';
 import type {
   CustomCategory,
   DayAssignment,
+  ExpenseMethod,
   InvitePreview,
   Place,
   PlaceSearchResult,
   NearbyHospital,
   PlanMember,
+  PlanExpense,
   PrepItem,
   CitySearchResult,
   RouteDetailsResponse,
@@ -348,6 +350,36 @@ export const travelApi = {
       body: JSON.stringify(data),
     }),
 
+  // 2026-09-28 테이크아웃 저장 장소. 일차 배정 없음
+  importPlaces: (
+    planId: string,
+    places: {
+      name: string;
+      address: string;
+      lat: number;
+      lng: number;
+      googlePlaceId?: string;
+      category?: string;
+      photoUrl?: string;
+      rating?: number;
+      memo?: string;
+      state?: string;
+    }[],
+  ) =>
+    request<{
+      added: number;
+      skipped: number;
+      outside?: number;
+      scheduled?: number;
+      already?: { name: string; createdAt: string | null }[];
+    }>(
+      `/travel-plans/${planId}/places/import`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ places }),
+      },
+    ),
+
   deletePlace: (planId: string, placeId: string) =>
     request<void>(`/travel-plans/${planId}/places/${placeId}`, {
       method: 'DELETE',
@@ -479,6 +511,81 @@ export const travelApi = {
   deletePrepItem: (planId: string, itemId: string) =>
     request<void>(`/travel-plans/${planId}/prep/items/${itemId}`, {
       method: 'DELETE',
+    }),
+
+  // 2026-09-28 여행 지출
+  listExpenses: (planId: string) =>
+    request<PlanExpense[]>(`/travel-plans/${planId}/expenses`),
+
+  addExpense: (
+    planId: string,
+    data: {
+      amount: number;
+      currency: string;
+      merchant: string;
+      method: ExpenseMethod;
+      dayIndex: number | null;
+      placeId: string | null;
+      note: string;
+    },
+  ) =>
+    request<PlanExpense>(`/travel-plans/${planId}/expenses`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  deleteExpense: (planId: string, expenseId: string) =>
+    request<void>(`/travel-plans/${planId}/expenses/${expenseId}`, {
+      method: 'DELETE',
+    }),
+
+  // 2026-09-28 영수증 스캔. 업로드 0–40%, 이후 읽기는 호출 쪽에서 올린다
+  scanReceipt: (
+    planId: string,
+    image: { mimeType: string; data: string },
+    onUpload: (percent: number) => void,
+  ) =>
+    new Promise<{
+      amount: number | null;
+      currency: string | null;
+      merchant: string;
+      paidAt: string | null;
+      method: ExpenseMethod | null;
+    }>((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open('POST', `${API_BASE}/travel-plans/${planId}/expenses/scan`);
+      xhr.setRequestHeader('Content-Type', 'application/json');
+      const token = getStoredToken();
+      if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+      xhr.upload.onprogress = (event) => {
+        if (!event.lengthComputable || event.total <= 0) return;
+        onUpload(Math.min(40, Math.round((event.loaded / event.total) * 40)));
+      };
+      xhr.upload.onload = () => onUpload(40);
+      xhr.onerror = () => reject(new Error('영수증을 보내지 못했습니다.'));
+      xhr.onload = () => {
+        if (xhr.status === 401) removeStoredToken();
+        let payload: { message?: string } = {};
+        try {
+          payload = JSON.parse(xhr.responseText) as { message?: string };
+        } catch {
+          payload = {};
+        }
+        if (xhr.status < 200 || xhr.status >= 300) {
+          reject(new Error(payload.message || '영수증을 읽지 못했습니다.'));
+          return;
+        }
+        resolve(
+          payload as {
+            amount: number | null;
+            currency: string | null;
+            merchant: string;
+            paidAt: string | null;
+            method: ExpenseMethod | null;
+          },
+        );
+      };
+      xhr.send(JSON.stringify(image));
     }),
 };
 

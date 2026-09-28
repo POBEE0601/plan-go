@@ -5,6 +5,7 @@ import {
   acceptInvite,
   addCustomCategory,
   addPlace,
+  importUnassignedPlaces,
   assignPlaceToDay,
   createInviteLink,
   createTravelPlan,
@@ -27,10 +28,17 @@ import {
   addPrepItem,
   updatePrepItem,
   deletePrepItem,
+  listExpenses,
+  addExpense,
+  deleteExpense,
+  canWrite,
 } from '../db/database.js';
 import { authMiddleware, type AuthRequest } from '../middleware/auth.js';
+import { rateLimit } from '../middleware/rateLimit.js';
+import { readReceipt } from '../services/receiptScan.js';
 import type {
   AssignDayBody,
+  CreateExpenseBody,
   CreatePlaceBody,
   CreateTravelPlanBody,
   InviteBody,
@@ -144,6 +152,29 @@ router.post('/:planId/places', async (req: AuthRequest, res) => {
       return;
     }
     res.status(201).json(place);
+  } catch (err) {
+    handleError(res, err);
+  }
+});
+
+// 2026-09-28 구글 테이크아웃 저장 장소. 일정 일차에는 넣지 않음
+router.post('/:planId/places/import', async (req: AuthRequest, res) => {
+  try {
+    const places = (req.body as { places?: CreatePlaceBody[] }).places;
+    if (!Array.isArray(places) || places.length === 0) {
+      res.status(400).json({ message: '가져올 장소를 입력해 주세요.' });
+      return;
+    }
+    const result = await importUnassignedPlaces(
+      param(req.params.planId),
+      req.userId!,
+      places,
+    );
+    if (!result) {
+      res.status(403).json({ message: '장소를 추가할 권한이 없습니다.' });
+      return;
+    }
+    res.status(201).json(result);
   } catch (err) {
     handleError(res, err);
   }
@@ -475,6 +506,88 @@ router.delete('/:planId/prep/items/:itemId', async (req: AuthRequest, res) => {
     );
     if (!ok) {
       res.status(403).json({ message: '항목을 삭제할 권한이 없습니다.' });
+      return;
+    }
+    res.status(204).send();
+  } catch (err) {
+    handleError(res, err);
+  }
+});
+
+// 2026-09-28 영수증 사진 → 지출 입력값. 저장은 사용자가 확인한 뒤 한다
+router.post(
+  '/:planId/expenses/scan',
+  rateLimit(8, 60_000),
+  async (req: AuthRequest, res) => {
+    try {
+      const plan = await getTravelPlanById(param(req.params.planId), req.userId!);
+      if (!plan || !canWrite(plan, req.userId!)) {
+        res.status(403).json({ message: '지출을 추가할 권한이 없습니다.' });
+        return;
+      }
+      const mimeType = (req.body as { mimeType?: unknown }).mimeType;
+      const data = (req.body as { data?: unknown }).data;
+      if (
+        (mimeType !== 'image/jpeg' &&
+          mimeType !== 'image/png' &&
+          mimeType !== 'image/webp') ||
+        typeof data !== 'string' ||
+        data.length < 32 ||
+        data.length > 6_000_000
+      ) {
+        res.status(400).json({ message: '영수증 이미지를 확인해 주세요.' });
+        return;
+      }
+      const draft = await readReceipt(mimeType, data);
+      res.json(draft);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : '영수증을 읽지 못했습니다.';
+      const status = /GEMINI_API_KEY/.test(message) ? 503 : 502;
+      res.status(status).json({ message });
+    }
+  },
+);
+
+// 2026-09-28 여행 지출
+router.get('/:planId/expenses', async (req: AuthRequest, res) => {
+  try {
+    const items = await listExpenses(param(req.params.planId), req.userId!);
+    if (!items) {
+      res.status(403).json({ message: '지출을 볼 권한이 없습니다.' });
+      return;
+    }
+    res.json(items);
+  } catch (err) {
+    handleError(res, err);
+  }
+});
+
+router.post('/:planId/expenses', async (req: AuthRequest, res) => {
+  try {
+    const item = await addExpense(
+      param(req.params.planId),
+      req.userId!,
+      req.body as CreateExpenseBody,
+    );
+    if (!item) {
+      res.status(403).json({ message: '지출을 추가할 권한이 없습니다.' });
+      return;
+    }
+    res.status(201).json(item);
+  } catch (err) {
+    handleError(res, err);
+  }
+});
+
+router.delete('/:planId/expenses/:expenseId', async (req: AuthRequest, res) => {
+  try {
+    const ok = await deleteExpense(
+      param(req.params.planId),
+      req.userId!,
+      param(req.params.expenseId),
+    );
+    if (!ok) {
+      res.status(403).json({ message: '지출을 삭제할 권한이 없습니다.' });
       return;
     }
     res.status(204).send();

@@ -1,3 +1,5 @@
+// 2026-09-28 저장 가져오기는 여행 이름 오른쪽 아이콘. 결과는 잠깐만 표시
+// 2026-09-28 모바일 지출 탭. 일정은 여행 홈 시트에 합침
 // 2026-09-23 여행 홈 첫 방문에 짧은 안내
 // 2026-09-23 일정 검색은 지도 돋보기로, 상단 검색은 저장만
 // 2026-09-22 상단 메뉴명 제거, 남는 폭에 기간·지역·환율
@@ -12,13 +14,15 @@
 // 2026-09-04 라이트 모드에서 작업영역이 본문 배경을 투과하지 않도록 고정
 // 2026-09-04 모바일은 목록형 대신 지도형(바텀시트)만 사용
 // 2026-09-04 여행 준비 체크리스트 진입
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
   AlertCircle,
   Compass,
   LayoutList,
+  List,
   Map as MapIcon,
+  Upload,
   UserPlus,
   X,
 } from 'lucide-react';
@@ -37,11 +41,73 @@ import FirstVisitTour from '../components/FirstVisitTour';
 import MobileTopBar from '../components/MobileTopBar';
 import MobileToolsPanel from '../components/MobileToolsPanel';
 import SavedPlacesPanel from '../components/SavedPlacesPanel';
+import ExpensesPanel from '../components/ExpensesPanel';
 import PlanQuickActions from '../components/PlanQuickActions';
 import { parseDashboardTab } from '../utils/mobileTabs';
 import { useTravelStore } from '../store/useTravelStore';
 import { usePlanUiStore } from '../store/usePlanUiStore';
 import ExchangeRateBadge from '../components/ExchangeRateBadge';
+import { travelApi } from '../utils/api';
+import { parseTakeoutPlaces, type TakeoutPlace } from '../utils/takeoutPlaces';
+
+// 2026-09-28 이미 있는 장소는 처음 넣은 시각을 로컬 시간으로 보여 준다
+const formatAddedAt = (iso: string): string => {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return '';
+  const pad = (value: number) => String(value).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+};
+
+const describeImport = (
+  result: {
+    added: number;
+    skipped: number;
+    outside?: number;
+    scheduled?: number;
+    already?: { name: string; createdAt: string | null }[];
+  },
+  parsed: TakeoutPlace[],
+): string => {
+  const lines: string[] = [];
+  if (result.added > 0) lines.push(`${result.added}곳을 저장했습니다.`);
+  if ((result.outside ?? 0) > 0) {
+    lines.push(`${result.outside}곳은 여행 지역과 달라 제외했습니다.`);
+  }
+  if ((result.scheduled ?? 0) > 0) {
+    lines.push(`${result.scheduled}곳은 이미 일정에 있어 제외했습니다.`);
+  }
+  const already = (result.already ?? []).map((place) => {
+    if (place.createdAt) return place;
+    const fromFile = parsed.find((item) => item.name === place.name);
+    return { ...place, createdAt: fromFile?.savedAt ?? null };
+  });
+  const byStamp = new Map<string, string[]>();
+  let withoutTime = 0;
+  for (const place of already) {
+    const stamp = place.createdAt ? formatAddedAt(place.createdAt) : '';
+    if (!stamp) {
+      withoutTime += 1;
+      continue;
+    }
+    const names = byStamp.get(stamp) ?? [];
+    names.push(place.name);
+    byStamp.set(stamp, names);
+  }
+  for (const [stamp, names] of byStamp) {
+    if (names.length === 1) lines.push(`${names[0]} ${stamp} 추가됨`);
+    else if (names.length <= 3)
+      lines.push(`${names.join(', ')} ${stamp} 추가됨`);
+    else lines.push(`이미 있는 ${names.length}곳 ${stamp} 추가됨`);
+  }
+  if (withoutTime > 0) {
+    lines.push(`${withoutTime}곳은 이미 저장되어 있습니다.`);
+  }
+  if (result.skipped > 0) {
+    lines.push(`${result.skipped}곳은 건너뛰었습니다.`);
+  }
+  if (lines.length === 0) lines.push('가져온 장소가 없습니다.');
+  return lines.join('\n');
+};
 
 export default function DashboardPage() {
   const {
@@ -51,6 +117,7 @@ export default function DashboardPage() {
     isLoading,
     error,
     fetchTravelPlans,
+    refreshSelectedPlan,
     clearError,
   } = useTravelStore();
   const resetPlanUi = usePlanUiStore((s) => s.resetPlanUi);
@@ -65,6 +132,11 @@ export default function DashboardPage() {
   // 모바일에서만 사용하는 여행 목록 드로어
   const [plansOpen, setPlansOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
+  // 2026-09-28 저장 지도 보기는 일차 칩과 분리해 상단 아이콘으로
+  const [savedMapOpen, setSavedMapOpen] = useState(false);
+  const importFileRef = useRef<HTMLInputElement>(null);
+  const [importing, setImporting] = useState(false);
+  const [importNote, setImportNote] = useState('');
   const [isDesktop, setIsDesktop] = useState(
     () => window.matchMedia('(min-width: 1024px)').matches,
   );
@@ -101,7 +173,38 @@ export default function DashboardPage() {
 
   useEffect(() => {
     setSearchOpen(false);
+    setImportNote('');
   }, [mobileTab]);
+
+  useEffect(() => {
+    if (!importNote) return;
+    const stay = importNote.includes('추가됨') ? 10000 : 4000;
+    const timer = window.setTimeout(() => setImportNote(''), stay);
+    return () => window.clearTimeout(timer);
+  }, [importNote]);
+
+  const importTakeout = async (file: File) => {
+    if (!selectedPlan) return;
+    setImporting(true);
+    setImportNote('');
+    try {
+      const raw = JSON.parse(await file.text()) as unknown;
+      const places = parseTakeoutPlaces(raw);
+      if (places.length === 0) {
+        setImportNote('저장된 장소가 있는 JSON이 아닙니다.');
+        return;
+      }
+      const result = await travelApi.importPlaces(selectedPlan.id, places);
+      await refreshSelectedPlan();
+      setImportNote(describeImport(result, places));
+    } catch (err) {
+      setImportNote(
+        err instanceof Error ? err.message : '파일을 읽지 못했습니다.',
+      );
+    } finally {
+      setImporting(false);
+    }
+  };
 
   const mobileTitle = selectedPlan?.title ?? '내 여행';
 
@@ -153,13 +256,42 @@ export default function DashboardPage() {
             : undefined
         }
         searchActive={searchOpen}
+        extra={
+          selectedPlan && mobileTab === 'saved' ? (
+            <button
+              type="button"
+              onClick={() => setSavedMapOpen((open) => !open)}
+              className={`flex h-10 w-10 items-center justify-center rounded-lg ${
+                savedMapOpen ? 'text-primary-600' : 'text-slate-700'
+              }`}
+              aria-label={savedMapOpen ? '목록으로 보기' : '지도로 보기'}
+              aria-pressed={savedMapOpen}
+            >
+              {savedMapOpen ? (
+                <List className="h-5 w-5" strokeWidth={1.7} />
+              ) : (
+                <MapIcon className="h-5 w-5" strokeWidth={1.7} />
+              )}
+            </button>
+          ) : undefined
+        }
         titleExtra={
-          selectedPlan && (mobileTab === 'home' || mobileTab === 'schedule') ? (
+          selectedPlan && mobileTab === 'home' ? (
             <PlanQuickActions
               compact
               onPrep={() => setPrepOpen(true)}
               onEmergency={() => setEmergencyOpen(true)}
             />
+          ) : selectedPlan && mobileTab === 'saved' && canWrite ? (
+            <button
+              type="button"
+              disabled={importing}
+              onClick={() => importFileRef.current?.click()}
+              className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-700 disabled:opacity-40"
+              aria-label="Google 저장 가져오기"
+            >
+              <Upload className="h-5 w-5" strokeWidth={1.7} />
+            </button>
           ) : undefined
         }
       />
@@ -306,7 +438,12 @@ export default function DashboardPage() {
                   <SavedPlacesPanel
                     canWrite={canWrite}
                     searchOpen={searchOpen}
+                    mapOpen={savedMapOpen}
                   />
+                </div>
+              ) : mobileTab === 'expenses' ? (
+                <div className="min-h-0 flex-1 overflow-hidden">
+                  <ExpensesPanel canWrite={canWrite} />
                 </div>
               ) : mobileTab === 'tools' ? (
                 <div className="min-h-0 flex-1 overflow-hidden">
@@ -317,10 +454,7 @@ export default function DashboardPage() {
                 </div>
               ) : (
                 <div className="relative min-h-0 flex-1 overflow-hidden">
-                  <PlacePoolBoard
-                    canWrite={canWrite}
-                    mobilePane={mobileTab === 'schedule' ? 'schedule' : 'map'}
-                  />
+                  <PlacePoolBoard canWrite={canWrite} mobilePane="map" />
                 </div>
               )}
             </>
@@ -342,6 +476,30 @@ export default function DashboardPage() {
         </main>
       </div>
 
+      {canWrite && selectedPlan && mobileTab === 'saved' && (
+        <input
+          ref={importFileRef}
+          type="file"
+          accept="application/json,.json"
+          className="hidden"
+          onChange={(e) => {
+            const file = e.target.files?.[0];
+            e.target.value = '';
+            if (file) void importTakeout(file);
+          }}
+        />
+      )}
+      {importNote && !isDesktop && mobileTab === 'saved' && (
+        <button
+          type="button"
+          onClick={() => setImportNote('')}
+          className="fixed inset-x-4 bottom-20 z-30 text-left"
+        >
+          <span className="inline-block max-h-40 max-w-sm overflow-y-auto whitespace-pre-line rounded-2xl bg-slate-900/90 px-3 py-2 text-xs leading-relaxed text-white shadow">
+            {importNote}
+          </span>
+        </button>
+      )}
       <MobileTabBar />
       {selectedPlan && !isLoading && !plansOpen && !isDesktop && mobileTab === 'home' && (
         <FirstVisitTour />

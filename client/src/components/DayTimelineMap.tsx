@@ -1,3 +1,4 @@
+// 2026-09-28 저장 지도는 경로선·번호 없이 핀만
 // 2026-09-23 기본 확대 버튼 대신 테마에 맞는 작은 버튼
 // 2026-09-23 장소 이동은 panTo 한 번만. 줌·fitBounds 를 같이 바꾸면 타일이 깜빡인다
 // 2026-09-23 장소가 바뀌면 줌은 유지한 채 한 번만 패닝
@@ -43,6 +44,12 @@ interface DayTimelineMapProps {
   };
   // 같은 장소가 하루에 두 번일 때 배정 전환도 따라가게
   focusToken?: string | null;
+  // 일차 동선. 저장 지도에서는 끈다
+  showRoute?: boolean;
+  // 방문 순서 번호. 저장 핀은 끈다
+  numberPins?: boolean;
+  // 핀을 누르면 지도 위 말풍선. 저장 화면은 장소 상세를 연다
+  showPinInfo?: boolean;
 }
 
 const mapContainerStyle = { width: '100%', height: '100%' };
@@ -141,6 +148,9 @@ export default function DayTimelineMap({
   layoutKey,
   overlayPadding,
   focusToken,
+  showRoute = true,
+  numberPins = true,
+  showPinInfo = true,
 }: DayTimelineMapProps) {
   const { isLoaded, loadError } = useGoogleMaps();
   const searchResults = useMapUiStore((s) => s.searchResults);
@@ -241,7 +251,7 @@ export default function DayTimelineMap({
 
   // 연속 장소 사이 차량 도로 경로. 실패하면 직선으로 이음
   useEffect(() => {
-    if (!isLoaded || places.length < 2) {
+    if (!showRoute || !isLoaded || places.length < 2) {
       setPaths([]);
       return;
     }
@@ -266,7 +276,7 @@ export default function DayTimelineMap({
     return () => {
       cancelled = true;
     };
-  }, [isLoaded, placeKey, places]);
+  }, [isLoaded, placeKey, places, showRoute]);
 
   const focusIdRef = useRef(focusPlaceId);
   focusIdRef.current = focusPlaceId;
@@ -405,9 +415,9 @@ export default function DayTimelineMap({
               position={{ lat: place.lat, lng: place.lng }}
               title={`${place.name} · ${categoryBadge(place.category)}`}
               zIndex={focusPlaceId === place.id ? 200 : 100 + i}
-              icon={numberedPinIcon(pinColorOf(place), i + 1)}
+              icon={numberedPinIcon(pinColorOf(place), numberPins ? i + 1 : 0)}
               onClick={() => {
-                setInfoPlaceId(place.id);
+                if (showPinInfo) setInfoPlaceId(place.id);
                 onSelectPlace?.(place.id);
               }}
             />

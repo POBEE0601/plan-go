@@ -35,6 +35,7 @@ export interface Place {
   photoUrl?: string;
   memo?: string;
   types?: string[];
+  createdAt?: string;
 }
 
 export interface DayAssignment {
@@ -67,6 +68,32 @@ export interface PrepItem {
   sortOrder: number;
   isTemplate: boolean;
   detail: string;
+}
+
+// 2026-09-28 여행 중 직접 입력 지출
+export type ExpenseMethod = 'cash' | 'card' | 'other';
+
+export interface PlanExpense {
+  id: string;
+  planId: string;
+  dayIndex: number | null;
+  placeId: string | null;
+  amount: number;
+  currency: string;
+  merchant: string;
+  method: ExpenseMethod;
+  note: string;
+  createdAt: string;
+}
+
+export interface CreateExpenseBody {
+  amount: number;
+  currency: string;
+  merchant?: string;
+  method?: ExpenseMethod;
+  dayIndex?: number | null;
+  placeId?: string | null;
+  note?: string;
 }
 
 // 레거시 Schedule (마이그레이션용)
@@ -122,6 +149,7 @@ export interface CreatePlaceBody {
   photoUrl?: string;
   memo?: string;
   types?: string[];
+  state?: string;
 }
 
 export interface AssignDayBody {

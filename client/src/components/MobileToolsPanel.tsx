@@ -1,6 +1,7 @@
+// 2026-09-28 게시판 입구를 공지 위에 둠
 // 2026-09-22 도구 탭: 초대·공지·테마·로그아웃 (여행별 준비/비상은 홈·일정)
 import { Link, useNavigate } from 'react-router-dom';
-import { LogOut, Megaphone, UserPlus } from 'lucide-react';
+import { LogOut, Megaphone, MessageCircle, UserPlus } from 'lucide-react';
 import ThemeToggle from './ThemeToggle';
 import { useAuthStore } from '../store/useAuthStore';
 import { useTravelStore } from '../store/useTravelStore';
@@ -52,6 +53,13 @@ export default function MobileToolsPanel({
       )}
 
       <div className="mb-3 overflow-hidden rounded-2xl border border-slate-200 bg-white">
+        <Link
+          to="/board"
+          className="flex items-center gap-3 border-b border-slate-100 px-4 py-3.5 hover:bg-slate-50"
+        >
+          <MessageCircle className="h-5 w-5 text-slate-500" />
+          <span className="text-sm font-medium text-slate-800">게시판</span>
+        </Link>
         <Link
           to="/notices"
           className="flex items-center gap-3 px-4 py-3.5 hover:bg-slate-50"

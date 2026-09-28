@@ -1,13 +1,9 @@
+// 2026-09-28 홈바는 여행 홈·저장·지출·Plan AI. 게시판은 설정으로
 // 2026-09-28 도구는 로고 줄 설정 아이콘으로 옮겨 홈바에서 뺌
 // 2026-09-23 하단 메뉴에 AI 탭
 // 2026-09-22 모바일 하단 홈바 (여행 홈·일정·저장·게시판)
 import { Link, useLocation } from 'react-router-dom';
-import {
-  CalendarDays,
-  Heart,
-  MapPin,
-  MessageCircle,
-} from 'lucide-react';
+import { Heart, MapPin, Wallet } from 'lucide-react';
 import GeminiMark from './GeminiMark';
 import { useAuthStore } from '../store/useAuthStore';
 import { parseDashboardTab } from '../utils/mobileTabs';
@@ -20,22 +16,16 @@ const ITEMS = [
     Icon: MapPin,
   },
   {
-    id: 'schedule',
-    to: '/dashboard?tab=schedule',
-    label: '일정',
-    Icon: CalendarDays,
-  },
-  {
     id: 'saved',
     to: '/dashboard?tab=saved',
     label: '저장',
     Icon: Heart,
   },
   {
-    id: 'board',
-    to: '/board',
-    label: '게시판',
-    Icon: MessageCircle,
+    id: 'expenses',
+    to: '/dashboard?tab=expenses',
+    label: '지출',
+    Icon: Wallet,
   },
   {
     id: 'ai',
@@ -57,8 +47,6 @@ export default function MobileTabBar() {
 
   const isActive = (id: string): boolean => {
     if (id === 'ai') return path.startsWith('/ai');
-    if (id === 'board')
-      return path.startsWith('/board') || path.startsWith('/releases');
     if (path.startsWith('/dashboard')) return id === dashTab;
     return false;
   };
@@ -68,7 +56,7 @@ export default function MobileTabBar() {
       className="safe-bottom z-30 shrink-0 border-t border-slate-200 bg-white lg:hidden"
       aria-label="주요 메뉴"
     >
-      <ul className="grid grid-cols-5">
+      <ul className="grid grid-cols-4">
         {ITEMS.map(({ id, to, label, Icon }) => {
           const active = isActive(id);
           return (

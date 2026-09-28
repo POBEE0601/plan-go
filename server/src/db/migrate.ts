@@ -1,3 +1,4 @@
+// 2026-09-28 여행 지출 테이블
 // 2026-09-22 장소 핀 색·카테고리 정규화
 // 2026-09-04 준비 메모·체크리스트 컬럼/테이블을 기존 DB에도 적용
 import { pool } from './pool.js';
@@ -31,10 +32,35 @@ export const ensurePrepSchema = async (): Promise<void> => {
   );
 };
 
+export const ensureExpenseSchema = async (): Promise<void> => {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS plan_expenses (
+      id TEXT PRIMARY KEY,
+      plan_id TEXT NOT NULL REFERENCES travel_plans(id) ON DELETE CASCADE,
+      day_index INTEGER,
+      place_id TEXT,
+      amount NUMERIC(14, 2) NOT NULL,
+      currency TEXT NOT NULL,
+      merchant TEXT NOT NULL DEFAULT '',
+      method TEXT NOT NULL DEFAULT 'cash',
+      note TEXT NOT NULL DEFAULT '',
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    )
+  `);
+  await pool.query(
+    `CREATE INDEX IF NOT EXISTS idx_plan_expenses_plan
+      ON plan_expenses(plan_id, created_at DESC)`,
+  );
+};
+
 // 2026-09-22 핀 색 컬럼 + 레거시 카테고리 정규화
 export const ensurePlaceMetaSchema = async (): Promise<void> => {
   await pool.query(
     `ALTER TABLE places ADD COLUMN IF NOT EXISTS pin_color TEXT`,
+  );
+  // 2026-09-28 장소가 계획에 들어간 시각. 예전 행은 비워 둔다
+  await pool.query(
+    `ALTER TABLE places ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ`,
   );
   await pool.query(
     `UPDATE places SET category = 'attraction'

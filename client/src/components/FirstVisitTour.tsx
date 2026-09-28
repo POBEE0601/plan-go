@@ -20,9 +20,9 @@ const STEPS = [
     body: '아래 카드를 넘기면 지도가 그 장소로 이동합니다.',
   },
   {
-    selector: 'a[href="/dashboard?tab=schedule"]',
-    title: '메모와 카테고리',
-    body: '일정 탭에서 장소를 누르면 메모와 카테고리를 바꿀 수 있습니다.',
+    selector: '[aria-label="장소 영역 높이 조절"]',
+    title: '일정 목록',
+    body: '손잡이를 올리면 시간순 목록이 열립니다. 장소를 누르면 메모와 카테고리를 바꿀 수 있습니다.',
   },
 ];
 

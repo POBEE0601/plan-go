@@ -1,3 +1,6 @@
+// 2026-09-28 가져오기는 상단 아이콘으로 옮겨 목록 위 안내 칸을 없앰
+// 2026-09-28 지도 버튼은 상단으로 옮기고, 테이크아웃 JSON은 미배정으로 넣음
+// 2026-09-28 저장 목록과 같은 장소 핀을 지도로 보기
 // 2026-09-23 저장 탭에서 일차별로 거르고, 전체는 일차 순으로 정렬
 // 2026-09-23 저장 탭 장소 클릭 시 일정과 같은 메모·카테고리 모달
 // 2026-09-23 저장 탭에서 카테고리·핀 색·한 줄 소개 수정
@@ -16,12 +19,14 @@ import {
   getDayCount,
   planCategoryIds,
 } from '../utils/days';
+import DayTimelineMap from './DayTimelineMap';
 import PlaceInspector from './PlaceInspector';
 import type { PlaceCategory } from '../types/travel';
 
 interface SavedPlacesPanelProps {
   canWrite: boolean;
   searchOpen?: boolean;
+  mapOpen?: boolean;
 }
 
 type DayFilter = 'all' | 'none' | number;
@@ -29,6 +34,7 @@ type DayFilter = 'all' | 'none' | number;
 export default function SavedPlacesPanel({
   canWrite,
   searchOpen = false,
+  mapOpen = false,
 }: SavedPlacesPanelProps) {
   const navigate = useNavigate();
   const { selectedPlan, assignToDay, deletePlace } = useTravelStore();
@@ -204,7 +210,23 @@ export default function SavedPlacesPanel({
         </div>
       )}
 
-      {filteredPlaces.length === 0 ? (
+      {mapOpen ? (
+        <div className="relative min-h-0 flex-1">
+          <DayTimelineMap
+            places={filteredPlaces}
+            showRoute={false}
+            numberPins={false}
+            showPinInfo={false}
+            onSelectPlace={setInspectId}
+            layoutKey={`saved-${poolFilter}-${String(dayFilter)}-${filteredPlaces.length}`}
+          />
+          {filteredPlaces.length === 0 && (
+            <p className="pointer-events-none absolute inset-x-0 top-3 text-center text-xs text-slate-500">
+              이 조건에 맞는 장소가 없습니다.
+            </p>
+          )}
+        </div>
+      ) : filteredPlaces.length === 0 ? (
         <div className="flex min-h-0 flex-1 flex-col items-center justify-center px-8 text-center">
           <Heart
             className="mb-5 h-16 w-16 text-slate-200"

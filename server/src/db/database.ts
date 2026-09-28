@@ -16,11 +16,14 @@ import type {
   ReleasePostPublic,
 } from '../types/release.js';
 import type {
+  CreateExpenseBody,
   CreatePlaceBody,
   CustomCategory,
   DayAssignment,
+  ExpenseMethod,
   MemberRole,
   Place,
+  PlanExpense,
   PlanMember,
   PrepItem,
   TravelPlan,
@@ -81,6 +84,7 @@ const mapPlace = (row: Record<string, unknown>): Place => ({
   photoUrl: row.photo_url ? String(row.photo_url) : undefined,
   memo: row.memo ? String(row.memo) : undefined,
   types: parseJson<string[] | undefined>(row.types, undefined),
+  createdAt: row.created_at ? asIso(row.created_at) : undefined,
 });
 
 const mapAssignment = (row: Record<string, unknown>): DayAssignment => ({
@@ -676,6 +680,132 @@ export const deletePrepItem = async (
   return (result.rowCount ?? 0) > 0;
 };
 
+// 2026-09-28 여행 지출
+const mapExpense = (row: Record<string, unknown>): PlanExpense => ({
+  id: String(row.id),
+  planId: String(row.plan_id),
+  dayIndex: row.day_index == null ? null : Number(row.day_index),
+  placeId: row.place_id == null ? null : String(row.place_id),
+  amount: Number(row.amount),
+  currency: String(row.currency),
+  merchant: String(row.merchant ?? ''),
+  method:
+    row.method === 'card' || row.method === 'other'
+      ? row.method
+      : 'cash',
+  note: String(row.note ?? ''),
+  createdAt: asIso(row.created_at),
+});
+
+const requireReadablePlan = async (
+  planId: string,
+  userId: string,
+): Promise<TravelPlan | null> => {
+  const plan = await loadPlan(planId);
+  if (!plan || !canRead(plan, userId)) return null;
+  return plan;
+};
+
+export const listExpenses = async (
+  planId: string,
+  userId: string,
+): Promise<PlanExpense[] | null> => {
+  const plan = await requireReadablePlan(planId, userId);
+  if (!plan) return null;
+  const { rows } = await pool.query(
+    `SELECT * FROM plan_expenses
+      WHERE plan_id = $1
+      ORDER BY day_index NULLS LAST, created_at DESC`,
+    [planId],
+  );
+  return rows.map((row) => mapExpense(row as Record<string, unknown>));
+};
+
+export const addExpense = async (
+  planId: string,
+  userId: string,
+  body: CreateExpenseBody,
+): Promise<PlanExpense | null> => {
+  const plan = await requireWritablePlan(planId, userId);
+  if (!plan) return null;
+
+  const amount = Math.round(Number(body.amount) * 100) / 100;
+  if (!Number.isFinite(amount) || amount <= 0 || amount > 1_000_000_000_000) {
+    throw new Error('금액을 입력해 주세요.');
+  }
+  const currency = String(body.currency ?? '')
+    .trim()
+    .toUpperCase();
+  if (!/^[A-Z]{3}$/.test(currency)) {
+    throw new Error('통화 코드를 입력해 주세요.');
+  }
+  const merchant = String(body.merchant ?? '').trim().slice(0, 80);
+  if (!merchant) throw new Error('사용처를 입력해 주세요.');
+
+  const method: ExpenseMethod =
+    body.method === 'card' || body.method === 'other' ? body.method : 'cash';
+  const note = String(body.note ?? '').trim().slice(0, 200);
+
+  let dayIndex: number | null = null;
+  if (body.dayIndex != null) {
+    dayIndex = Number(body.dayIndex);
+    const dayCount = getDayCount(plan.startDate, plan.endDate);
+    if (!Number.isInteger(dayIndex) || dayIndex < 1 || dayIndex > dayCount) {
+      throw new Error('일차를 입력해 주세요.');
+    }
+  }
+
+  const placeId = body.placeId ? String(body.placeId) : null;
+  if (placeId && !plan.places.some((place) => place.id === placeId)) {
+    throw new Error('장소를 찾을 수 없습니다. 입력을 확인해 주세요.');
+  }
+
+  const item: PlanExpense = {
+    id: generateId(),
+    planId,
+    dayIndex,
+    placeId,
+    amount,
+    currency,
+    merchant,
+    method,
+    note,
+    createdAt: new Date().toISOString(),
+  };
+  const { rows } = await pool.query(
+    `INSERT INTO plan_expenses
+      (id, plan_id, day_index, place_id, amount, currency, merchant, method, note)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+     RETURNING *`,
+    [
+      item.id,
+      item.planId,
+      item.dayIndex,
+      item.placeId,
+      item.amount,
+      item.currency,
+      item.merchant,
+      item.method,
+      item.note,
+    ],
+  );
+  return rows[0] ? mapExpense(rows[0] as Record<string, unknown>) : null;
+};
+
+export const deleteExpense = async (
+  planId: string,
+  userId: string,
+  expenseId: string,
+): Promise<boolean> => {
+  const plan = await requireWritablePlan(planId, userId);
+  if (!plan) return false;
+  const result = await pool.query(
+    `DELETE FROM plan_expenses WHERE id = $1 AND plan_id = $2`,
+    [expenseId, planId],
+  );
+  return (result.rowCount ?? 0) > 0;
+};
+
 // --- Places ---
 
 export const addPlace = async (
@@ -717,12 +847,13 @@ export const addPlace = async (
     photoUrl: body.photoUrl,
     memo: body.memo,
     types: body.types,
+    createdAt: new Date().toISOString(),
   };
 
   await pool.query(
     `INSERT INTO places
-      (id, plan_id, google_place_id, name, address, lat, lng, category, rating, photo_url, memo, types, pin_color)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
+      (id, plan_id, google_place_id, name, address, lat, lng, category, rating, photo_url, memo, types, pin_color, created_at)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
     [
       created.id,
       created.planId,
@@ -737,10 +868,175 @@ export const addPlace = async (
       created.memo ?? null,
       created.types ? JSON.stringify(created.types) : null,
       created.pinColor ?? null,
+      created.createdAt,
     ],
   );
 
   return created;
+};
+
+const metersBetween = (
+  aLat: number,
+  aLng: number,
+  bLat: number,
+  bLng: number,
+): number => {
+  const radius = 6371000;
+  const dLat = ((bLat - aLat) * Math.PI) / 180;
+  const dLng = ((bLng - aLng) * Math.PI) / 180;
+  const h =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos((aLat * Math.PI) / 180) *
+      Math.cos((bLat * Math.PI) / 180) *
+      Math.sin(dLng / 2) ** 2;
+  return 2 * radius * Math.asin(Math.min(1, Math.sqrt(h)));
+};
+
+// 2026-09-28 state가 없을 때만 쓰는 거리 한계
+const REGION_IMPORT_RADIUS_M = 150_000;
+
+// 2026-09-28 JSON state(Tokyo)와 여행 지역명(도쿄)을 같은 광역으로 본다
+const PREFECTURE_ALIASES: { key: string; names: string[] }[] = [
+  { key: 'tokyo', names: ['tokyo', '도쿄', '동경', '東京'] },
+  { key: 'osaka', names: ['osaka', '오사카', '大阪'] },
+  { key: 'kyoto', names: ['kyoto', '교토', '京都'] },
+  { key: 'fukuoka', names: ['fukuoka', '후쿠오카', '福岡'] },
+  { key: 'hokkaido', names: ['hokkaido', '홋카이도', '北海道', '삿포로', 'sapporo'] },
+  { key: 'aichi', names: ['aichi', '아이치', '愛知', '나고야', 'nagoya'] },
+  { key: 'kanagawa', names: ['kanagawa', '가나가와', '神奈川', '요코하마', 'yokohama'] },
+  { key: 'chiba', names: ['chiba', '지바', '치바', '千葉'] },
+  { key: 'saitama', names: ['saitama', '사이타마', '埼玉'] },
+  { key: 'hyogo', names: ['hyogo', '효고', '兵庫', '고베', 'kobe'] },
+  { key: 'hiroshima', names: ['hiroshima', '히로시마', '広島'] },
+  { key: 'okinawa', names: ['okinawa', '오키나와', '沖縄'] },
+  { key: 'nara', names: ['nara', '나라현', '奈良'] },
+];
+
+const foldRegion = (value: string): string =>
+  value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/\s+/g, '');
+
+const PREFECTURE_NAMES = PREFECTURE_ALIASES.flatMap((row) =>
+  row.names.map((name) => ({ key: row.key, name: foldRegion(name) })),
+).sort((a, b) => b.name.length - a.name.length);
+
+const prefectureKey = (value: string): string | null => {
+  const folded = foldRegion(value);
+  if (!folded) return null;
+  return PREFECTURE_NAMES.find((row) => folded.includes(row.name))?.key ?? null;
+};
+
+const dominantPrefecture = (places: { name: string; address: string }[]): string | null => {
+  const counts = new Map<string, number>();
+  for (const place of places) {
+    const key = prefectureKey(`${place.address} ${place.name}`);
+    if (!key) continue;
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+  }
+  let best: string | null = null;
+  let bestCount = 0;
+  for (const [key, count] of counts) {
+    if (count > bestCount) {
+      best = key;
+      bestCount = count;
+    }
+  }
+  return best;
+};
+
+// 2026-09-28 테이크아웃 저장 장소. 지역 밖·일정에 있는 곳은 제외
+export const importUnassignedPlaces = async (
+  planId: string,
+  userId: string,
+  items: CreatePlaceBody[],
+): Promise<{
+  added: number;
+  skipped: number;
+  outside: number;
+  scheduled: number;
+  already: { name: string; createdAt: string | null }[];
+} | null> => {
+  const plan = await requireWritablePlan(planId, userId);
+  if (!plan) return null;
+
+  const existing = [...plan.places];
+  const scheduledIds = new Set(plan.dayAssignments.map((row) => row.placeId));
+  const regionKey = prefectureKey(plan.regionName ?? '') ?? dominantPrefecture(existing);
+  const regionLat = plan.regionLat;
+  const regionLng = plan.regionLng;
+  const hasRegion =
+    regionLat != null &&
+    regionLng != null &&
+    Number.isFinite(regionLat) &&
+    Number.isFinite(regionLng);
+  let added = 0;
+  let skipped = 0;
+  let outside = 0;
+  let scheduled = 0;
+  const already: { name: string; createdAt: string | null }[] = [];
+  const batch = items.slice(0, 500);
+
+  for (const body of batch) {
+    const name = body.name?.trim() ?? '';
+    const lat = Number(body.lat);
+    const lng = Number(body.lng);
+    if (!name || !Number.isFinite(lat) || !Number.isFinite(lng)) {
+      skipped += 1;
+      continue;
+    }
+    if (Math.abs(lat) > 90 || Math.abs(lng) > 180) {
+      skipped += 1;
+      continue;
+    }
+    const googlePlaceId = body.googlePlaceId?.trim() || undefined;
+    const duplicate = existing.find((place) => {
+      if (googlePlaceId && place.googlePlaceId === googlePlaceId) return true;
+      return (
+        place.name.trim().toLowerCase() === name.toLowerCase() &&
+        metersBetween(place.lat, place.lng, lat, lng) < 40
+      );
+    });
+    if (duplicate && scheduledIds.has(duplicate.id)) {
+      scheduled += 1;
+      continue;
+    }
+    const placeKey = prefectureKey(body.state ?? '');
+    const outsideRegion =
+      regionKey && placeKey
+        ? regionKey !== placeKey
+        : hasRegion &&
+          regionLat != null &&
+          regionLng != null &&
+          metersBetween(regionLat, regionLng, lat, lng) > REGION_IMPORT_RADIUS_M;
+    if (outsideRegion) {
+      outside += 1;
+      continue;
+    }
+    if (duplicate) {
+      already.push({
+        name: duplicate.name,
+        createdAt: duplicate.createdAt ?? null,
+      });
+      continue;
+    }
+    const created = await addPlace(planId, userId, {
+      ...body,
+      name,
+      lat,
+      lng,
+      googlePlaceId,
+      address: body.address?.trim() ?? '',
+      category: body.category ?? 'attraction',
+    });
+    if (!created) return null;
+    existing.push(created);
+    added += 1;
+  }
+
+  return { added, skipped, outside, scheduled, already };
 };
 
 export const updatePlace = async (

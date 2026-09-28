@@ -5,9 +5,11 @@
 // 2026-09-04 목록형(bar) / 지도형(overlay) 검색바 분기
 // 2026-09-04 검색 입력 글자색이 배경에 묻히지 않도록 고정
 // 2026-09-04 검색 결과 행 글자색 명시 (라이트 모드 가독성)
+// 2026-09-28 검색 결과에서 일차 없이 저장만 할 수 있음
 // 2026-09-04 검색 추가 시 풀이 아니라 선택 일차 일정에 바로 배정
 import { useState } from 'react';
 import {
+  BookmarkPlus,
   ChevronDown,
   ChevronUp,
   Loader2,
@@ -91,11 +93,11 @@ export default function PlaceSearchBar({
     }
   };
 
-  const handleAdd = async (place: PlaceSearchResult) => {
+  const handleAdd = async (place: PlaceSearchResult, assignDay: boolean) => {
     if (!canWrite) return;
     setAdding(true);
     try {
-      // 이미 풀에 있는 장소는 재등록하지 않고 일차만 배정
+      // 이미 풀에 있는 장소는 재등록하지 않고, 일차 추가는 선택한 경우만
       const existing = selectedPlan?.places.find(
         (p) => p.googlePlaceId && p.googlePlaceId === place.googlePlaceId,
       );
@@ -117,15 +119,16 @@ export default function PlaceSearchBar({
         }
       }
       if (!placeId) return;
-      const onDay = useTravelStore
-        .getState()
-        .selectedPlan?.dayAssignments.some(
-          (a) => a.placeId === placeId && a.dayIndex === activeDay,
-        );
-      if (!onDay) await assignToDay(placeId, activeDay);
-      // 하단 일정 목록이 보이도록 풀/검색 카드를 닫고 시트를 연다
-      setPoolOpen(false);
-      setSheetSnap('half');
+      if (assignDay) {
+        const onDay = useTravelStore
+          .getState()
+          .selectedPlan?.dayAssignments.some(
+            (a) => a.placeId === placeId && a.dayIndex === activeDay,
+          );
+        if (!onDay) await assignToDay(placeId, activeDay);
+        setPoolOpen(false);
+        setSheetSnap('half');
+      }
       clearSearchResults();
       setResultsOpen(false);
     } catch {
@@ -270,19 +273,30 @@ export default function PlaceSearchBar({
                     </div>
                   </div>
                   {canWrite && (
-                    <button
-                      type="button"
-                      disabled={adding}
-                      onClick={() => handleAdd(selectedMapPlace)}
-                      className="flex shrink-0 items-center gap-1 rounded-lg bg-primary-600 px-2.5 py-1.5 text-xs font-medium text-white hover:bg-primary-700 disabled:opacity-60"
-                    >
-                      {adding ? (
-                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                      ) : (
-                        <Plus className="h-3.5 w-3.5" />
-                      )}
-                      {activeDay}일차에 추가
-                    </button>
+                    <div className="flex shrink-0 flex-col gap-1">
+                      <button
+                        type="button"
+                        disabled={adding}
+                        onClick={() => handleAdd(selectedMapPlace, false)}
+                        className="flex items-center justify-center gap-1 rounded-lg border border-slate-200 px-2 py-1 text-[11px] font-medium text-slate-700 disabled:opacity-60"
+                      >
+                        <BookmarkPlus className="h-3.5 w-3.5" />
+                        저장만
+                      </button>
+                      <button
+                        type="button"
+                        disabled={adding}
+                        onClick={() => handleAdd(selectedMapPlace, true)}
+                        className="flex items-center justify-center gap-1 rounded-lg bg-primary-600 px-2 py-1 text-[11px] font-medium text-white hover:bg-primary-700 disabled:opacity-60"
+                      >
+                        {adding ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        ) : (
+                          <Plus className="h-3.5 w-3.5" />
+                        )}
+                        {activeDay}일차
+                      </button>
+                    </div>
                   )}
                 </div>
               )}

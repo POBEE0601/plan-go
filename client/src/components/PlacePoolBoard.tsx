@@ -1,3 +1,4 @@
+// 2026-09-28 모바일 여행 홈: 시트를 내리면 카드, 올리면 시간순 목록
 // 2026-09-23 여행홈 시트 최소 높이는 가로 카드까지
 // 2026-09-23 일정 검색·지도 돋보기·하단 시트 드래그
 // 2026-09-22 모바일 홈바: 지도/일정 전용 화면
@@ -565,6 +566,11 @@ export default function PlacePoolBoard({
   // 2026-09-23 하단 시트 높이를 지도 가시 영역 보정에 사용
   const [sheetHeight, setSheetHeight] = useState(0);
   const onSheetHeight = useCallback((h: number) => setSheetHeight(h), []);
+  // 2026-09-28 시트가 카드 높이보다 높으면 시간순 목록
+  const [sheetExpanded, setSheetExpanded] = useState(false);
+  const onSheetExpanded = useCallback((expanded: boolean) => {
+    setSheetExpanded((prev) => (prev === expanded ? prev : expanded));
+  }, []);
   // 2026-09-23 지도 좌측 돋보기로 검색바 토글 (기본 숨김)
   const [mapSearchOpen, setMapSearchOpen] = useState(false);
   // 지도 전체 보기 중 검색바만 따로 다시 열기
@@ -806,9 +812,9 @@ export default function PlacePoolBoard({
     />
   );
 
-  const useMobileMap = !isDesktop && mobilePane === 'map';
-  const useMobileSchedule = !isDesktop && mobilePane === 'schedule';
-  const useMobilePlan = useMobileMap || useMobileSchedule;
+  // 2026-09-28 지도·일정은 같은 시트. 예전 schedule 주소도 이 화면
+  const useMobilePlan =
+    !isDesktop && (mobilePane === 'map' || mobilePane === 'schedule');
 
   const toggleMapSearch = () => {
     setMapSearchOpen((open) => {
@@ -857,7 +863,7 @@ export default function PlacePoolBoard({
               focusPlaceId={focusPlaceId}
               focusToken={selectedAssignmentId}
               onSelectPlace={onSelectMapPlace}
-              layoutKey={`${useMobileSchedule ? 'mob-schedule' : 'mob-map'}-${mapSearchOpen ? 's' : 'n'}`}
+              layoutKey={`mob-plan-${sheetExpanded ? 'list' : 'cards'}-${mapSearchOpen ? 's' : 'n'}`}
               overlayPadding={{
                 top: mapSearchOpen ? 96 : 72,
                 right: 48,
@@ -867,40 +873,22 @@ export default function PlacePoolBoard({
             />
             {mapSearchOverlay}
             <ResizablePlaceSheet
-              defaultToMin={!useMobileSchedule}
-              defaultRatio={useMobileSchedule ? 0.5 : 0.34}
-              minPx={useMobileSchedule ? 176 : 96}
+              defaultToMin
+              defaultRatio={0.34}
+              minPx={96}
               onHeightChange={onSheetHeight}
+              onExpandedChange={onSheetExpanded}
+              liftToRatio={inspectorOpen ? 0.7 : null}
             >
-              {useMobileSchedule ? (
-                inspectorOpen && sheetInspector ? (
-                  <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-                    <DayTabs canWrite={canWrite} />
-                    {sheetInspector}
-                  </div>
-                ) : (
-                  <>
-                    <DayTabs canWrite={canWrite} />
-                    <TimelineChrome canWrite={canWrite} showPool={false} />
-                    <CompactTimeline
-                      dayIndex={activeDay}
-                      assignments={assignments}
-                      placesById={placesById}
-                      canWrite={canWrite}
-                    />
-                  </>
-                )
-              ) : (
+              {inspectorOpen && sheetInspector ? (
+                <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+                  <DayTabs canWrite={canWrite} />
+                  {sheetInspector}
+                </div>
+              ) : sheetExpanded ? (
                 <>
-                  <div data-sheet-min className="shrink-0">
-                    <DayTabs canWrite={canWrite} />
-                    <DayPlaceCarousel
-                      assignments={assignments}
-                      placesById={placesById}
-                      selectedAssignmentId={selectedAssignmentId}
-                      onSelect={(id) => selectAssignment(id, { soft: true })}
-                    />
-                  </div>
+                  <DayTabs canWrite={canWrite} />
+                  <TimelineChrome canWrite={canWrite} showPool={false} />
                   <CompactTimeline
                     dayIndex={activeDay}
                     assignments={assignments}
@@ -908,6 +896,16 @@ export default function PlacePoolBoard({
                     canWrite={canWrite}
                   />
                 </>
+              ) : (
+                <div data-sheet-min className="shrink-0">
+                  <DayTabs canWrite={canWrite} />
+                  <DayPlaceCarousel
+                    assignments={assignments}
+                    placesById={placesById}
+                    selectedAssignmentId={selectedAssignmentId}
+                    onSelect={(id) => selectAssignment(id, { soft: true })}
+                  />
+                </div>
               )}
             </ResizablePlaceSheet>
           </div>

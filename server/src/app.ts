@@ -26,7 +26,11 @@ app.use(
     origin: origins.length > 0 ? origins : true,
   }),
 );
-app.use(express.json());
+// 2026-09-28 영수증 스캔만 사진 JSON을 받고, 다른 요청은 1mb로 둔다
+app.use((req, res, next) => {
+  const limit = req.path.includes('/expenses/scan') ? '8mb' : '1mb';
+  return express.json({ limit })(req, res, next);
+});
 
 app.use('/api', (_req, res, next) => {
   res.setHeader('Cache-Control', 'private, no-store');

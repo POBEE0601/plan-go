@@ -265,10 +265,12 @@ function PlacesCard({
       for (const item of selected) {
         try {
           const placeId = await ensurePlace(planId, plan.places, item);
-          const assigned = plan.dayAssignments.some(
-            (row) => row.placeId === placeId && row.dayIndex === dayIndex,
-          );
-          if (!assigned) {
+          const assigned =
+            dayIndex > 0 &&
+            plan.dayAssignments.some(
+              (row) => row.placeId === placeId && row.dayIndex === dayIndex,
+            );
+          if (dayIndex > 0 && !assigned) {
             const created = await travelApi.assignDay(planId, {
               placeId,
               dayIndex,
@@ -294,12 +296,19 @@ function PlacesCard({
         }
       }
       await onChanged();
-      const dayLabel = startDate
-        ? dayOptionLabel(dayIndex, startDate)
-        : `${dayIndex}일차`;
+      const dayLabel =
+        dayIndex > 0
+          ? startDate
+            ? dayOptionLabel(dayIndex, startDate)
+            : `${dayIndex}일차`
+          : '저장';
       setNote(
         [
-          added.length ? `${added.length}곳을 ${dayLabel}에 넣었습니다.` : '',
+          added.length
+            ? dayIndex > 0
+              ? `${added.length}곳을 ${dayLabel}에 넣었습니다.`
+              : `${added.length}곳을 일차 없이 저장했습니다.`
+            : '',
           failed.length ? `실패: ${failed.join(', ')}` : '',
         ]
           .filter(Boolean)
@@ -366,6 +375,7 @@ function PlacesCard({
             className="gemini-field h-9 min-w-0 flex-1 px-3 text-sm"
             aria-label="추가할 날짜"
           >
+            <option value={0}>저장만</option>
             {Array.from({ length: dayCount }, (_, i) => i + 1).map((day) => (
               <option key={day} value={day}>
                 {startDate ? dayOptionLabel(day, startDate) : `${day}일차`}
