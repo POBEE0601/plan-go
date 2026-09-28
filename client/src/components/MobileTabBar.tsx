@@ -1,12 +1,12 @@
+// 2026-09-28 도구는 로고 줄 설정 아이콘으로 옮겨 홈바에서 뺌
 // 2026-09-23 하단 메뉴에 AI 탭
-// 2026-09-22 모바일 하단 홈바 (여행 홈·일정·저장·게시판·도구)
+// 2026-09-22 모바일 하단 홈바 (여행 홈·일정·저장·게시판)
 import { Link, useLocation } from 'react-router-dom';
 import {
   CalendarDays,
   Heart,
   MapPin,
   MessageCircle,
-  SlidersHorizontal,
 } from 'lucide-react';
 import GeminiMark from './GeminiMark';
 import { useAuthStore } from '../store/useAuthStore';
@@ -38,12 +38,6 @@ const ITEMS = [
     Icon: MessageCircle,
   },
   {
-    id: 'tools',
-    to: '/dashboard?tab=tools',
-    label: '도구',
-    Icon: SlidersHorizontal,
-  },
-  {
     id: 'ai',
     to: '/ai',
     label: 'Plan AI',
@@ -65,7 +59,6 @@ export default function MobileTabBar() {
     if (id === 'ai') return path.startsWith('/ai');
     if (id === 'board')
       return path.startsWith('/board') || path.startsWith('/releases');
-    if (path.startsWith('/notices')) return id === 'tools';
     if (path.startsWith('/dashboard')) return id === dashTab;
     return false;
   };
@@ -75,7 +68,7 @@ export default function MobileTabBar() {
       className="safe-bottom z-30 shrink-0 border-t border-slate-200 bg-white lg:hidden"
       aria-label="주요 메뉴"
     >
-      <ul className="grid grid-cols-6">
+      <ul className="grid grid-cols-5">
         {ITEMS.map(({ id, to, label, Icon }) => {
           const active = isActive(id);
           return (

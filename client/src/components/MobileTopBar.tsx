@@ -1,11 +1,14 @@
+// 2026-09-28 로고 줄 오른쪽에 도구 화면으로 가는 설정 아이콘
 // 2026-09-23 최상단 중앙 로고
 // 2026-09-22 메뉴명 제거, 남는 폭에 여행 정보
 // 2026-09-22 여행명 라인 우측에 여행별 액션
 // 2026-09-22 모바일 상단: 큰 제목 + 아이콘 액션 (PC 헤더 대체)
 import type { ReactNode } from 'react';
-import { Link } from 'react-router-dom';
-import { ArrowLeft, Search } from 'lucide-react';
+import { Link, useLocation } from 'react-router-dom';
+import { ArrowLeft, Search, Settings } from 'lucide-react';
 import BrandLogo from './BrandLogo';
+import { useAuthStore } from '../store/useAuthStore';
+import { parseDashboardTab } from '../utils/mobileTabs';
 
 interface MobileTopBarProps {
   title: string;
@@ -28,6 +31,12 @@ export default function MobileTopBar({
   extra,
   titleExtra,
 }: MobileTopBarProps) {
+  const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
+  const location = useLocation();
+  const toolsActive =
+    location.pathname.startsWith('/dashboard') &&
+    parseDashboardTab(new URLSearchParams(location.search).get('tab')) === 'tools';
+
   return (
     <header className="safe-top shrink-0 bg-white lg:hidden">
       <div className="relative flex h-11 items-center justify-between px-2">
@@ -65,6 +74,18 @@ export default function MobileTopBar({
             </button>
           )}
           {extra}
+          {isAuthenticated && (
+            <Link
+              to="/dashboard?tab=tools"
+              className={`flex h-10 w-10 items-center justify-center rounded-lg ${
+                toolsActive ? 'text-slate-900' : 'text-slate-700'
+              }`}
+              aria-label="설정"
+              aria-current={toolsActive ? 'page' : undefined}
+            >
+              <Settings className="h-5 w-5" strokeWidth={toolsActive ? 2.2 : 1.7} />
+            </Link>
+          )}
         </div>
       </div>
       <div className="flex items-center gap-2 px-5 pb-1.5 pt-0.5">
