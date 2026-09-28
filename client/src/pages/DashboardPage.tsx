@@ -1,3 +1,4 @@
+// 2026-09-28 저장 가져오기는 고른 카테고리로만 미배정에 넣는다
 // 2026-09-28 저장 가져오기는 여행 이름 오른쪽 아이콘. 결과는 잠깐만 표시
 // 2026-09-28 모바일 지출 탭. 일정은 여행 홈 시트에 합침
 // 2026-09-23 여행 홈 첫 방문에 짧은 안내
@@ -48,6 +49,7 @@ import { useTravelStore } from '../store/useTravelStore';
 import { usePlanUiStore } from '../store/usePlanUiStore';
 import ExchangeRateBadge from '../components/ExchangeRateBadge';
 import { travelApi } from '../utils/api';
+import { categoryLabel, categoryMeta } from '../utils/days';
 import { parseTakeoutPlaces, type TakeoutPlace } from '../utils/takeoutPlaces';
 
 // 2026-09-28 이미 있는 장소는 처음 넣은 시각을 로컬 시간으로 보여 준다
@@ -56,6 +58,15 @@ const formatAddedAt = (iso: string): string => {
   if (Number.isNaN(date.getTime())) return '';
   const pad = (value: number) => String(value).padStart(2, '0');
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+};
+
+const importLabel = (category: string): string => {
+  if (category === 'all') return 'Google 저장 가져오기';
+  const label = categoryLabel(category);
+  const last = label.charCodeAt(label.length - 1);
+  const batchim =
+    last >= 0xac00 && last <= 0xd7a3 && (last - 0xac00) % 28 !== 0;
+  return `${label}${batchim ? '으로' : '로'} 가져오기`;
 };
 
 const describeImport = (
@@ -121,6 +132,7 @@ export default function DashboardPage() {
     clearError,
   } = useTravelStore();
   const resetPlanUi = usePlanUiStore((s) => s.resetPlanUi);
+  const savedCategory = usePlanUiStore((s) => s.savedCategory);
   const layoutMode = usePlanUiStore((s) => s.layoutMode);
   const setLayoutMode = usePlanUiStore((s) => s.setLayoutMode);
 
@@ -185,18 +197,28 @@ export default function DashboardPage() {
 
   const importTakeout = async (file: File) => {
     if (!selectedPlan) return;
+    if (savedCategory === 'all') {
+      setImportNote('카테고리를 고른 뒤 가져와 주세요.');
+      return;
+    }
     setImporting(true);
     setImportNote('');
     try {
       const raw = JSON.parse(await file.text()) as unknown;
-      const places = parseTakeoutPlaces(raw);
+      const places = parseTakeoutPlaces(raw).map((place) => ({
+        ...place,
+        category: savedCategory,
+        pinColor: categoryMeta(savedCategory).pinColor,
+      }));
       if (places.length === 0) {
         setImportNote('저장된 장소가 있는 JSON이 아닙니다.');
         return;
       }
       const result = await travelApi.importPlaces(selectedPlan.id, places);
       await refreshSelectedPlan();
-      setImportNote(describeImport(result, places));
+      setImportNote(
+        `${categoryLabel(savedCategory)} · ${describeImport(result, places)}`,
+      );
     } catch (err) {
       setImportNote(
         err instanceof Error ? err.message : '파일을 읽지 못했습니다.',
@@ -287,8 +309,10 @@ export default function DashboardPage() {
               type="button"
               disabled={importing}
               onClick={() => importFileRef.current?.click()}
-              className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-700 disabled:opacity-40"
-              aria-label="Google 저장 가져오기"
+              className={`flex h-9 w-9 items-center justify-center rounded-lg disabled:opacity-40 ${
+                savedCategory === 'all' ? 'text-slate-700' : 'text-primary-600'
+              }`}
+              aria-label={importLabel(savedCategory)}
             >
               <Upload className="h-5 w-5" strokeWidth={1.7} />
             </button>

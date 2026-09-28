@@ -360,6 +360,7 @@ export const travelApi = {
       lng: number;
       googlePlaceId?: string;
       category?: string;
+      pinColor?: string;
       photoUrl?: string;
       rating?: number;
       memo?: string;

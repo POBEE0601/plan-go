@@ -1,3 +1,4 @@
+// 2026-09-28 미배정은 카테고리로 나누고 개수를 보여 준다
 // 2026-09-28 가져오기는 상단 아이콘으로 옮겨 목록 위 안내 칸을 없앰
 // 2026-09-28 지도 버튼은 상단으로 옮기고, 테이크아웃 JSON은 미배정으로 넣음
 // 2026-09-28 저장 목록과 같은 장소 핀을 지도로 보기
@@ -12,6 +13,7 @@ import { Heart, Plus, Trash2 } from 'lucide-react';
 import { useTravelStore } from '../store/useTravelStore';
 import { usePlanUiStore } from '../store/usePlanUiStore';
 import {
+  categoryBadge,
   categoryEmoji,
   categoryLabel,
   formatDayMd,
@@ -21,7 +23,7 @@ import {
 } from '../utils/days';
 import DayTimelineMap from './DayTimelineMap';
 import PlaceInspector from './PlaceInspector';
-import type { PlaceCategory } from '../types/travel';
+import type { Place, PlaceCategory } from '../types/travel';
 
 interface SavedPlacesPanelProps {
   canWrite: boolean;
@@ -39,7 +41,8 @@ export default function SavedPlacesPanel({
   const navigate = useNavigate();
   const { selectedPlan, assignToDay, deletePlace } = useTravelStore();
   const activeDay = usePlanUiStore((s) => s.activeDay);
-  const [poolFilter, setPoolFilter] = useState<PlaceCategory | 'all'>('all');
+  const poolFilter = usePlanUiStore((s) => s.savedCategory);
+  const setPoolFilter = usePlanUiStore((s) => s.setSavedCategory);
   const [dayFilter, setDayFilter] = useState<DayFilter>('all');
   const [query, setQuery] = useState('');
   const [inspectId, setInspectId] = useState<string | null>(null);
@@ -126,11 +129,43 @@ export default function SavedPlacesPanel({
   const assignedDaysOf = (placeId: string): number[] =>
     (assignmentsByPlace.get(placeId) ?? []).map((a) => a.dayIndex);
 
+  const unassignedCount = places.filter(
+    (place) => (assignmentsByPlace.get(place.id) ?? []).length === 0,
+  ).length;
+
+  const unassignedSections = useMemo(() => {
+    if (dayFilter !== 'none') return [];
+    const groups = new Map<string, typeof filteredPlaces>();
+    for (const place of filteredPlaces) {
+      const list = groups.get(place.category) ?? [];
+      list.push(place);
+      groups.set(place.category, list);
+    }
+    const order = planCategoryIds(selectedPlan?.customCategories);
+    return [...groups.entries()].sort((a, b) => {
+      const ai = order.indexOf(a[0]);
+      const bi = order.indexOf(b[0]);
+      if (ai === -1 && bi === -1) return b[1].length - a[1].length;
+      if (ai === -1) return 1;
+      if (bi === -1) return -1;
+      return ai - bi;
+    });
+  }, [dayFilter, filteredPlaces, selectedPlan?.customCategories]);
+
   if (!selectedPlan) return null;
+
+  const knownCategories = new Set(planCategoryIds(selectedPlan.customCategories));
+  const extraCategories = [...new Set(places.map((place) => place.category))].filter(
+    (category) => category && !knownCategories.has(category),
+  );
 
   const tabs: { id: PlaceCategory | 'all'; label: string }[] = [
     { id: 'all', label: '전체' },
     ...planCategoryIds(selectedPlan.customCategories).map((cat) => ({
+      id: cat,
+      label: categoryLabel(cat),
+    })),
+    ...extraCategories.map((cat) => ({
       id: cat,
       label: categoryLabel(cat),
     })),
@@ -174,7 +209,7 @@ export default function SavedPlacesPanel({
                   )}`,
                 };
               }),
-              { id: 'none' as const, label: '미배정' },
+              { id: 'none' as const, label: `미배정 ${unassignedCount}` },
             ] as { id: DayFilter; label: string }[]
           ).map((chip) => {
             const active = dayFilter === chip.id;
@@ -258,7 +293,16 @@ export default function SavedPlacesPanel({
         </div>
       ) : (
         <ul className="min-h-0 flex-1 overflow-y-auto">
-          {filteredPlaces.map((place) => {
+          {(dayFilter === 'none' ? unassignedSections : [['all', filteredPlaces] as const]).map(
+            ([category, rows]) => (
+            <li key={category}>
+              {dayFilter === 'none' && (
+                <p className="sticky top-0 z-10 border-b border-slate-100 bg-slate-50 px-4 py-1.5 text-xs font-semibold text-slate-600">
+                  {categoryBadge(category)} {rows.length}
+                </p>
+              )}
+              <ul>
+          {rows.map((place) => {
             const days = assignedDaysOf(place.id);
             return (
               <li
@@ -271,20 +315,7 @@ export default function SavedPlacesPanel({
                     onClick={() => setInspectId(place.id)}
                     className="flex min-w-0 flex-1 items-start gap-3 text-left"
                   >
-                    {place.photoUrl ? (
-                      <img
-                        src={place.photoUrl}
-                        alt=""
-                        className="h-14 w-14 shrink-0 rounded-lg object-cover"
-                        onError={(e) => {
-                          e.currentTarget.style.display = 'none';
-                        }}
-                      />
-                    ) : (
-                      <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-lg">
-                        {categoryEmoji(place.category)}
-                      </span>
-                    )}
+                    <PlaceThumb place={place} />
                     <span className="min-w-0 flex-1">
                       <span className="block truncate text-[15px] font-semibold text-slate-800">
                         {place.name}
@@ -295,6 +326,9 @@ export default function SavedPlacesPanel({
                         </span>
                       )}
                       <span className="mt-1 flex flex-wrap items-center gap-1 text-[11px] text-slate-500">
+                        <span className="rounded bg-slate-100 px-1.5 py-0.5 text-slate-600">
+                          {categoryBadge(place.category)}
+                        </span>
                         {days.map((d) => (
                           <span
                             key={d}
@@ -330,6 +364,9 @@ export default function SavedPlacesPanel({
               </li>
             );
           })}
+              </ul>
+            </li>
+          ))}
         </ul>
       )}
 
@@ -358,5 +395,24 @@ export default function SavedPlacesPanel({
           document.body,
         )}
     </div>
+  );
+}
+
+function PlaceThumb({ place }: { place: Place }) {
+  const [broken, setBroken] = useState(false);
+  if (!place.photoUrl || broken) {
+    return (
+      <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-lg">
+        {categoryEmoji(place.category)}
+      </span>
+    );
+  }
+  return (
+    <img
+      src={place.photoUrl}
+      alt=""
+      className="h-14 w-14 shrink-0 rounded-lg object-cover"
+      onError={() => setBroken(true)}
+    />
   );
 }

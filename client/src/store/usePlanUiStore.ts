@@ -1,3 +1,4 @@
+// 2026-09-28 저장 탭에서 고른 카테고리로 가져오기
 // 2026-09-23 스크롤·카드는 인스펙터 없이 지도 초점만 바꿈
 // 2026-09-14 지도 핀 선택 시 시트 스냅 유지 옵션 (지도 전체 보기)
 // 2026-09-01 대시보드 UI: 선택 일자·좌측 메뉴 접기
@@ -36,6 +37,8 @@ interface PlanUiStore {
   poolOpen: boolean;
   sheetSnap: SheetSnap;
   layoutMode: DashboardLayoutMode;
+  savedCategory: string;
+  setSavedCategory: (category: string) => void;
   setActiveDay: (day: number, opts?: { keepSelection?: boolean }) => void;
   toggleSidebar: () => void;
   setSidebarCollapsed: (collapsed: boolean) => void;
@@ -60,6 +63,8 @@ export const usePlanUiStore = create<PlanUiStore>((set) => ({
   poolOpen: false,
   sheetSnap: 'half',
   layoutMode: readLayoutMode(),
+  savedCategory: 'all',
+  setSavedCategory: (category) => set({ savedCategory: category }),
   setActiveDay: (day, opts) =>
     set((s) => {
       const next = Math.max(1, day);
@@ -118,5 +123,6 @@ export const usePlanUiStore = create<PlanUiStore>((set) => ({
       inspectorOpen: false,
       poolOpen: false,
       sheetSnap: 'half',
+      savedCategory: 'all',
     }),
 }));

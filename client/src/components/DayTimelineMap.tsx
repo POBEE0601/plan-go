@@ -23,7 +23,7 @@ import { useTravelStore } from '../store/useTravelStore';
 import { useThemeStore } from '../store/useThemeStore';
 import { fetchJsRoute } from '../utils/jsDirections';
 import { DARK_MAP_STYLES } from '../utils/mapTheme';
-import { numberedPinIcon, pinColorOf } from '../utils/mapPin';
+import { categoryPinIcon, numberedPinIcon, pinColorOf } from '../utils/mapPin';
 import MapZoomButtons from './MapZoomButtons';
 import { categoryBadge } from '../utils/days';
 import type { Place, PlaceSearchResult } from '../types/travel';
@@ -415,7 +415,11 @@ export default function DayTimelineMap({
               position={{ lat: place.lat, lng: place.lng }}
               title={`${place.name} · ${categoryBadge(place.category)}`}
               zIndex={focusPlaceId === place.id ? 200 : 100 + i}
-              icon={numberedPinIcon(pinColorOf(place), numberPins ? i + 1 : 0)}
+              icon={
+                numberPins
+                  ? numberedPinIcon(pinColorOf(place), i + 1)
+                  : categoryPinIcon(place)
+              }
               onClick={() => {
                 if (showPinInfo) setInfoPlaceId(place.id);
                 onSelectPlace?.(place.id);

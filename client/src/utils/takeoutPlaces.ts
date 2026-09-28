@@ -38,10 +38,10 @@ const mapCategory = (raw: string): string | undefined => {
   const value = raw.toLowerCase();
   if (!value) return undefined;
   if (/카페|cafe|coffee|커피/.test(value)) return 'cafe';
-  if (/디저트|베이커|빵|dessert|bakery/.test(value)) return 'dessert';
+  if (/디저트|베이커|빵|포장|dessert|bakery/.test(value)) return 'dessert';
   if (/쇼핑|shop|마트|store/.test(value)) return 'shopping';
   if (/맛집|식당|레스토랑|restaurant|food|음식/.test(value)) return 'restaurant';
-  if (/관광|명소|박물관|공원|attraction/.test(value)) return 'attraction';
+  if (/관광|구경|명소|박물관|공원|attraction/.test(value)) return 'attraction';
   return raw.slice(0, 40);
 };
 
