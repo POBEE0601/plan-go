@@ -1,3 +1,4 @@
+// 2026-10-01 PC 장소 카드 버튼은 일차 이동과 동작을 줄로 나눈다
 // 2026-09-23 저장 탭: 배정 없는 장소도 카테고리·메모 모달로 수정
 // 2026-09-22 인스펙터에서 카테고리·핀 색·소개 편집
 // 2026-09-07 모바일 메모 버튼이 시트 하단에 잘리지 않도록
@@ -125,48 +126,47 @@ export default function PlaceInspector({
         </div>
       )}
 
-      <div className="flex shrink-0 flex-wrap items-center gap-2 border-t border-slate-100 px-3 py-2">
+      <div className="shrink-0 space-y-2 border-t border-slate-100 px-3 py-2">
         {canWrite && assignment && dayCount > 1 && (
-          <div className="min-w-0 flex-1">
-            <DayMoveControl
-              currentDay={assignment.dayIndex}
-              dayCount={dayCount}
-              size="md"
-              onMove={(day) => {
-                void moveAssignment(assignment.id, day);
-                setActiveDay(day, { keepSelection: true });
-              }}
-            />
-          </div>
+          <DayMoveControl
+            currentDay={assignment.dayIndex}
+            dayCount={dayCount}
+            size="sm"
+            onMove={(day) => {
+              void moveAssignment(assignment.id, day);
+              setActiveDay(day, { keepSelection: true });
+            }}
+          />
         )}
-        {canWrite && assignment && (
-          <button
-            type="button"
-            onClick={() => void handleRemove()}
-            className="rounded-md px-2 py-1 text-[12px] text-red-600 hover:bg-red-50"
-          >
-            일정에서 제거
-          </button>
-        )}
-        {!isSheet && (
-          <button
-            type="button"
-            onClick={() => setMemoOpen(true)}
-            className={`inline-flex items-center gap-1 rounded-md px-2 py-1 text-[12px] font-medium ${
-              memo
-                ? 'bg-primary-50 text-primary-700'
-                : 'text-slate-600 hover:bg-slate-50'
-            }`}
-          >
-            <StickyNote className="h-3.5 w-3.5" />
-            메모
-          </button>
-        )}
-        <div className="relative ml-auto h-8 min-w-[6.5rem]">
+        <div className="flex flex-wrap items-center gap-1.5">
+          {canWrite && assignment && (
+            <button
+              type="button"
+              onClick={() => void handleRemove()}
+              className="inline-flex h-8 shrink-0 items-center rounded-md px-2 text-[12px] text-red-600 hover:bg-red-50"
+            >
+              일정에서 제거
+            </button>
+          )}
+          {!isSheet && (
+            <button
+              type="button"
+              onClick={() => setMemoOpen(true)}
+              className={`inline-flex h-8 shrink-0 items-center gap-1 rounded-md px-2 text-[12px] font-medium ${
+                memo
+                  ? 'bg-primary-50 text-primary-700'
+                  : 'text-slate-600 hover:bg-slate-50'
+              }`}
+            >
+              <StickyNote className="h-3.5 w-3.5" />
+              메모
+            </button>
+          )}
           <NearbyHospitalButton
             lat={place.lat}
             lng={place.lng}
             placeName={place.name}
+            layout="inline"
           />
         </div>
       </div>

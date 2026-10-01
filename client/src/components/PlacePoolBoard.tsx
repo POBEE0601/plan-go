@@ -988,7 +988,7 @@ export default function PlacePoolBoard({
               </div>
             )}
             {isDesktop && inspectorOpen && inspector && (
-              <div className="absolute bottom-3 right-3 z-20 w-80">
+              <div className="absolute bottom-3 right-3 z-20 w-[22rem] max-w-[calc(100%-1.5rem)]">
                 {inspector}
               </div>
             )}

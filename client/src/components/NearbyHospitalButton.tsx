@@ -1,3 +1,4 @@
+// 2026-10-01 상세 카드 안에서는 모서리에 겹치지 않고 버튼 줄에 둔다
 // 2026-09-01 병원 Nearby Search는 클릭 시에만 (카드 표시 시 자동 호출 제거)
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
@@ -38,12 +39,14 @@ interface NearbyHospitalButtonProps {
   lat?: number;
   lng?: number;
   placeName?: string;
+  layout?: 'corner' | 'inline';
 }
 
 export default function NearbyHospitalButton({
   lat,
   lng,
   placeName,
+  layout = 'corner',
 }: NearbyHospitalButtonProps) {
   const btnRef = useRef<HTMLButtonElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
@@ -130,7 +133,11 @@ export default function NearbyHospitalButton({
         ref={btnRef}
         type="button"
         onClick={toggle}
-        className="absolute bottom-1.5 right-1.5 z-10 flex items-center gap-1 rounded-full bg-white/95 px-2 py-0.5 text-[11px] shadow-sm ring-1 ring-slate-200 hover:bg-rose-50"
+        className={
+          layout === 'inline'
+            ? 'inline-flex h-8 shrink-0 items-center gap-1 rounded-md bg-slate-50 px-2 text-[12px] font-medium text-slate-700 ring-1 ring-slate-200 hover:bg-rose-50'
+            : 'absolute bottom-1.5 right-1.5 z-10 flex items-center gap-1 rounded-full bg-white/95 px-2 py-0.5 text-[11px] shadow-sm ring-1 ring-slate-200 hover:bg-rose-50'
+        }
         aria-label={`${placeName ?? '이 장소'} 근처 의료시설`}
         title="근처 의료시설 (클릭 시 조회)"
       >
