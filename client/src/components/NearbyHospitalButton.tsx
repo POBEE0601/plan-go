@@ -1,3 +1,4 @@
+// 2026-10-02 전화번호는 병원 한 곳을 눌렀을 때만 조회
 // 2026-10-01 상세 카드 안에서는 모서리에 겹치지 않고 버튼 줄에 둔다
 // 2026-09-01 병원 Nearby Search는 클릭 시에만 (카드 표시 시 자동 호출 제거)
 import { useEffect, useRef, useState } from 'react';
@@ -22,7 +23,7 @@ const loadNearby = (
   if (pending) return pending;
 
   const req = placesApi
-    .nearbyHospitals(lat, lng, { limit: 5, phones: true })
+    .nearbyHospitals(lat, lng, { limit: 5 })
     .then((data) => {
       listCache.set(placeKey, data);
       return data;
@@ -55,6 +56,8 @@ export default function NearbyHospitalButton({
   const [error, setError] = useState('');
   const [open, setOpen] = useState(false);
   const [pos, setPos] = useState({ right: 12, bottom: 12 });
+  const [phoneById, setPhoneById] = useState<Record<string, string | null>>({});
+  const [phoneLoadingId, setPhoneLoadingId] = useState<string | null>(null);
 
   const hasCoords =
     lat != null && lng != null && !Number.isNaN(lat) && !Number.isNaN(lng);
@@ -88,6 +91,24 @@ export default function NearbyHospitalButton({
   if (!hasCoords) return null;
 
   const nearest = hospitals[0];
+
+  const fetchPhone = (placeId: string) => {
+    if (placeId in phoneById || phoneLoadingId) return;
+    setPhoneLoadingId(placeId);
+    placesApi
+      .placePhone(placeId)
+      .then((data) => {
+        setPhoneById((prev) => ({ ...prev, [placeId]: data.phone }));
+      })
+      .catch((err: unknown) => {
+        setError(
+          err instanceof Error ? err.message : '전화번호를 불러오지 못했습니다.',
+        );
+      })
+      .finally(() => {
+        setPhoneLoadingId((current) => (current === placeId ? null : current));
+      });
+  };
 
   const toggle = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -203,18 +224,33 @@ export default function NearbyHospitalButton({
                     {h.facility}
                     {h.departments[0] ? ` · ${h.departments[0]}` : ''}
                   </p>
-                  {h.phone ? (
+                  {h.phone || phoneById[h.googlePlaceId] ? (
                     <a
-                      href={telHref(h.phone)}
+                      href={telHref(
+                        h.phone || phoneById[h.googlePlaceId] || '',
+                      )}
                       className="mt-1 inline-flex items-center gap-1 text-[12px] font-semibold text-primary-700"
                     >
                       <Phone className="h-3 w-3" />
-                      {h.phone}
+                      {h.phone || phoneById[h.googlePlaceId]}
                     </a>
-                  ) : (
+                  ) : phoneById[h.googlePlaceId] === null ? (
                     <p className="mt-1 text-[11px] text-slate-400">
                       공개 연락처 없음
                     </p>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => fetchPhone(h.googlePlaceId)}
+                      className="mt-1 inline-flex items-center gap-1 text-[12px] font-semibold text-primary-700"
+                    >
+                      {phoneLoadingId === h.googlePlaceId ? (
+                        <Loader2 className="h-3 w-3 animate-spin" />
+                      ) : (
+                        <Phone className="h-3 w-3" />
+                      )}
+                      전화번호 보기
+                    </button>
                   )}
                   <a
                     href={h.mapsUrl}

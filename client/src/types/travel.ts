@@ -145,6 +145,12 @@ export interface CitySearchResult {
   lng: number;
 }
 
+export interface CitySuggestion {
+  googlePlaceId: string;
+  label: string;
+  address: string;
+}
+
 export interface InvitePreview {
   planId: string;
   planTitle: string;

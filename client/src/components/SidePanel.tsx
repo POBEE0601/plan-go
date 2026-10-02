@@ -32,7 +32,7 @@ import { useAuthStore } from '../store/useAuthStore';
 import { usePlanUiStore } from '../store/usePlanUiStore';
 import { placesApi } from '../utils/api';
 import { dayOptionLabel, getDayCount, isLongTrip } from '../utils/days';
-import type { CitySearchResult, TravelPlan } from '../types/travel';
+import type { CitySearchResult, CitySuggestion, TravelPlan } from '../types/travel';
 
 const isPlanOwner = (plan: TravelPlan, userId?: string): boolean => {
   if (!userId) return false;
@@ -78,7 +78,7 @@ export default function SidePanel({ open = true, onClose }: SidePanelProps) {
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [regionQuery, setRegionQuery] = useState('');
-  const [regionResults, setRegionResults] = useState<CitySearchResult[]>([]);
+  const [regionResults, setRegionResults] = useState<CitySuggestion[]>([]);
   const [selectedRegion, setSelectedRegion] =
     useState<CitySearchResult | null>(null);
   const [searchingRegion, setSearchingRegion] = useState(false);
@@ -108,7 +108,7 @@ export default function SidePanel({ open = true, onClose }: SidePanelProps) {
       } finally {
         setSearchingRegion(false);
       }
-    }, 400);
+    }, 700);
 
     return () => clearTimeout(timer);
   }, [regionQuery, selectedRegion]);
@@ -189,11 +189,21 @@ export default function SidePanel({ open = true, onClose }: SidePanelProps) {
     }
   };
 
-  const pickRegion = (region: CitySearchResult) => {
-    setSelectedRegion(region);
-    setRegionQuery(region.label);
-    setRegionResults([]);
+  const pickRegion = async (suggestion: CitySuggestion) => {
+    setSearchingRegion(true);
     setRegionError('');
+    try {
+      const region = await placesApi.cityDetail(suggestion.googlePlaceId);
+      setSelectedRegion(region);
+      setRegionQuery(region.label);
+      setRegionResults([]);
+    } catch (err) {
+      setRegionError(
+        err instanceof Error ? err.message : '도시 정보를 불러오지 못했습니다.',
+      );
+    } finally {
+      setSearchingRegion(false);
+    }
   };
 
   const dayCount = selectedPlan
@@ -398,7 +408,8 @@ export default function SidePanel({ open = true, onClose }: SidePanelProps) {
                     <li key={r.googlePlaceId}>
                       <button
                         type="button"
-                        onClick={() => pickRegion(r)}
+                        disabled={searchingRegion}
+                        onClick={() => void pickRegion(r)}
                         className="flex w-full flex-col px-3 py-2 text-left hover:bg-primary-50"
                       >
                         <span className="text-sm font-medium text-slate-800">

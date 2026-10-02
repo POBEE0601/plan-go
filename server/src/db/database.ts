@@ -10,6 +10,7 @@ import type {
   BoardPostPublic,
 } from '../types/board.js';
 import type { NoticePost, NoticePostPublic } from '../types/notice.js';
+import { publicPhotoUrl } from '../services/placePhoto.js';
 import type {
   DeployStatus,
   ReleasePost,
@@ -81,7 +82,7 @@ const mapPlace = (row: Record<string, unknown>): Place => ({
   category: (row.category as Place['category']) ?? 'attraction',
   pinColor: row.pin_color ? String(row.pin_color) : undefined,
   rating: row.rating == null ? undefined : Number(row.rating),
-  photoUrl: row.photo_url ? String(row.photo_url) : undefined,
+  photoUrl: publicPhotoUrl(row.photo_url ? String(row.photo_url) : undefined),
   memo: row.memo ? String(row.memo) : undefined,
   types: parseJson<string[] | undefined>(row.types, undefined),
   createdAt: row.created_at ? asIso(row.created_at) : undefined,
@@ -844,7 +845,7 @@ export const addPlace = async (
         } as Record<string, string>
       )[body.category ?? 'attraction'],
     rating: body.rating,
-    photoUrl: body.photoUrl,
+    photoUrl: publicPhotoUrl(body.photoUrl),
     memo: body.memo,
     types: body.types,
     createdAt: new Date().toISOString(),
@@ -1058,6 +1059,9 @@ export const updatePlace = async (
     planId,
     name: updates.name != null ? updates.name : current.name,
     address: updates.address != null ? updates.address : current.address,
+    photoUrl: publicPhotoUrl(
+      updates.photoUrl !== undefined ? updates.photoUrl : current.photoUrl,
+    ),
   };
 
   await pool.query(

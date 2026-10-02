@@ -1,23 +1,7 @@
+// 2026-10-02 Distance Matrix 제거. Directions는 하루 캐시, 실패는 10분
 // 2026-09-01 Directions/Distance Matrix 과금 가드 (재시도·3모드 자동 호출 제거)
 // 콘솔 일일 쿼터: Google Cloud → API 및 서비스 → Directions API → 할당량
-// 2026-08-31 Google Distance Matrix로 이동수단 요약
-export interface TransitOption {
-  mode: 'walking' | 'transit' | 'driving';
-  label: string;
-  durationText: string;
-  durationSec: number;
-  distanceText: string;
-  distanceMeters: number;
-}
-
-export interface TransitSummary {
-  from: { lat: number; lng: number };
-  to: { lat: number; lng: number };
-  options: TransitOption[];
-  recommended: TransitOption | null;
-}
-
-const getApiKey = (): string => process.env.GOOGLE_MAPS_API_KEY ?? '';
+import { DAY_MS, recall, remember } from './mapsCache.js';
 
 const MODE_LABEL: Record<string, string> = {
   walking: '도보',
@@ -25,84 +9,12 @@ const MODE_LABEL: Record<string, string> = {
   driving: '차량',
 };
 
+const getApiKey = (): string => process.env.GOOGLE_MAPS_API_KEY ?? '';
+
 const inferRegion = (lat: number, lng: number): string | undefined => {
   if (lat > 24 && lat < 46 && lng > 122 && lng < 146) return 'jp';
   if (lat > 33 && lat < 39 && lng > 124 && lng < 132) return 'kr';
   return undefined;
-};
-
-const fetchMode = async (
-  fromLat: number,
-  fromLng: number,
-  toLat: number,
-  toLng: number,
-  mode: 'walking' | 'transit' | 'driving',
-): Promise<TransitOption | null> => {
-  const API_KEY = getApiKey();
-  if (!API_KEY) return null;
-
-  const params = new URLSearchParams({
-    origins: `${fromLat},${fromLng}`,
-    destinations: `${toLat},${toLng}`,
-    mode,
-    language: 'ko',
-    key: API_KEY,
-  });
-
-  const region = inferRegion(fromLat, fromLng);
-  if (region) params.set('region', region);
-
-  // 대중교통은 departure_time 필수인 경우가 많음
-  if (mode === 'transit') {
-    params.set('departure_time', 'now');
-    params.set('transit_mode', 'bus|rail|subway|train');
-  }
-
-  const res = await fetch(
-    `https://maps.googleapis.com/maps/api/distancematrix/json?${params}`,
-  );
-  const data = (await res.json()) as {
-    status: string;
-    rows?: {
-      elements: {
-        status: string;
-        duration?: { text: string; value: number };
-        distance?: { text: string; value: number };
-      }[];
-    }[];
-  };
-
-  const element = data.rows?.[0]?.elements?.[0];
-  if (!element || element.status !== 'OK' || !element.duration || !element.distance) {
-    return null;
-  }
-
-  return {
-    mode,
-    label: MODE_LABEL[mode],
-    durationText: element.duration.text,
-    durationSec: element.duration.value,
-    distanceText: element.distance.text,
-    distanceMeters: element.distance.value,
-  };
-};
-
-// 2026-09-01 Distance Matrix 3모드 병렬 호출 제거. 차량 1회만
-export const getTransitSummary = async (
-  fromLat: number,
-  fromLng: number,
-  toLat: number,
-  toLng: number,
-): Promise<TransitSummary> => {
-  const driving = await fetchMode(fromLat, fromLng, toLat, toLng, 'driving');
-  const options = driving ? [driving] : [];
-
-  return {
-    from: { lat: fromLat, lng: fromLng },
-    to: { lat: toLat, lng: toLng },
-    options,
-    recommended: driving,
-  };
 };
 
 // --- Directions 상세 단계 ---
@@ -301,6 +213,28 @@ const fetchDirectionsDetail = async (
     return { detail: null, failReason: 'API 키가 없습니다.' };
   }
 
+  const cacheKey = `dir:${mode}:${fromLat.toFixed(3)}:${fromLng.toFixed(3)}:${toLat.toFixed(3)}:${toLng.toFixed(3)}`;
+  const cached = recall<{ detail: RouteDetail | null; failReason?: string }>(
+    cacheKey,
+  );
+  if (cached) {
+    if (!cached.detail) return cached;
+    return {
+      detail: {
+        ...cached.detail,
+        mapsUrl: buildMapsUrl(
+          fromLat,
+          fromLng,
+          toLat,
+          toLng,
+          mode,
+          fromName,
+          toName,
+        ),
+      },
+    };
+  }
+
   // 2026-09-01 재시도 금지: 좌표 기준 1회만 호출
   const data = await fetchDirectionsOnce(fromLat, fromLng, toLat, toLng, mode);
   const detail = parseDirectionsResponse(data, mode);
@@ -314,6 +248,7 @@ const fetchDirectionsDetail = async (
       fromName,
       toName,
     );
+    remember(cacheKey, { detail }, DAY_MS);
     return { detail };
   }
 
@@ -325,7 +260,9 @@ const fetchDirectionsDetail = async (
         ? 'Directions API 권한/결제/키 설정을 확인하세요.'
         : `Google 응답: ${data.status || 'UNKNOWN'}`);
 
-  return { detail: null, failReason };
+  const missed = { detail: null, failReason };
+  remember(cacheKey, missed, 10 * 60 * 1000);
+  return missed;
 };
 
 export const getRouteDetails = async (

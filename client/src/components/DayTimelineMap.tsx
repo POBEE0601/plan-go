@@ -1,3 +1,4 @@
+// 2026-10-02 장소 사이는 직선만. Directions API는 호출하지 않는다
 // 2026-09-28 저장 지도는 경로선·번호 없이 핀만
 // 2026-09-23 기본 확대 버튼 대신 테마에 맞는 작은 버튼
 // 2026-09-23 장소 이동은 panTo 한 번만. 줌·fitBounds 를 같이 바꾸면 타일이 깜빡인다
@@ -21,7 +22,6 @@ import { useGoogleMaps } from '../hooks/useGoogleMaps';
 import { useMapUiStore } from '../store/useMapUiStore';
 import { useTravelStore } from '../store/useTravelStore';
 import { useThemeStore } from '../store/useThemeStore';
-import { fetchJsRoute } from '../utils/jsDirections';
 import { DARK_MAP_STYLES } from '../utils/mapTheme';
 import { categoryPinIcon, numberedPinIcon, pinColorOf } from '../utils/mapPin';
 import MapZoomButtons from './MapZoomButtons';
@@ -249,34 +249,23 @@ export default function DayTimelineMap({
     [theme],
   );
 
-  // 연속 장소 사이 차량 도로 경로. 실패하면 직선으로 이음
+  // 연속 장소는 직선으로만 잇는다. 도로 경로는 구글 지도 바로가기로 연다
   useEffect(() => {
-    if (!showRoute || !isLoaded || places.length < 2) {
+    if (!showRoute || places.length < 2) {
       setPaths([]);
       return;
     }
 
-    let cancelled = false;
-    const run = async () => {
-      const segments = await Promise.all(
-        places.slice(1).map(async (to, i) => {
-          const from = places[i];
-          const route = await fetchJsRoute(from, to, 'driving');
-          if (route?.overviewPath.length) return route.overviewPath;
-          return [
-            { lat: from.lat, lng: from.lng },
-            { lat: to.lat, lng: to.lng },
-          ];
-        }),
-      );
-      if (!cancelled) setPaths(segments);
-    };
-
-    void run();
-    return () => {
-      cancelled = true;
-    };
-  }, [isLoaded, placeKey, places, showRoute]);
+    setPaths(
+      places.slice(1).map((to, i) => {
+        const from = places[i];
+        return [
+          { lat: from.lat, lng: from.lng },
+          { lat: to.lat, lng: to.lng },
+        ];
+      }),
+    );
+  }, [placeKey, places, showRoute]);
 
   const focusIdRef = useRef(focusPlaceId);
   focusIdRef.current = focusPlaceId;

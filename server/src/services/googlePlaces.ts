@@ -1,10 +1,13 @@
+// 2026-10-02 사진 URL·도시 상세 일괄 조회를 빼 과금을 줄인다
 // 2026-09-22 장소 카테고리 자동 분류 갱신
 // 2026-08-31 Google Places 검색·상세 조회 서비스
 import type {
   CitySearchResult,
+  CitySuggestion,
   PlaceCategory,
   PlaceSearchResult,
 } from '../types/travel.js';
+import { DAY_MS, recall, remember } from './mapsCache.js';
 
 // dotenv 로드 이후에 읽히도록 호출 시점에 조회
 const getApiKey = (): string => process.env.GOOGLE_MAPS_API_KEY ?? '';
@@ -21,12 +24,6 @@ const mapCategory = (types: string[] = []): PlaceCategory => {
   )
     return 'shopping';
   return 'attraction';
-};
-
-const photoUrl = (photoReference?: string): string | undefined => {
-  const API_KEY = getApiKey();
-  if (!photoReference || !API_KEY) return undefined;
-  return `https://maps.googleapis.com/maps/api/place/photo?maxwidth=400&photo_reference=${photoReference}&key=${API_KEY}`;
 };
 
 interface GoogleTextSearchResult {
@@ -48,6 +45,12 @@ export const searchPlaces = async (
   if (!API_KEY) {
     throw new Error('GOOGLE_MAPS_API_KEY가 설정되지 않았습니다.');
   }
+
+  const cacheKey = `text:${query.trim().toLowerCase()}:${
+    lat != null ? lat.toFixed(2) : ''
+  }:${lng != null ? lng.toFixed(2) : ''}`;
+  const cached = recall<PlaceSearchResult[]>(cacheKey);
+  if (cached) return cached;
 
   const params = new URLSearchParams({
     query,
@@ -75,7 +78,7 @@ export const searchPlaces = async (
     );
   }
 
-  return (data.results ?? []).slice(0, 12).map((item) => {
+  const results = (data.results ?? []).slice(0, 8).map((item) => {
     const types = item.types ?? [];
     return {
       googlePlaceId: item.place_id,
@@ -84,56 +87,12 @@ export const searchPlaces = async (
       lat: item.geometry?.location.lat ?? 0,
       lng: item.geometry?.location.lng ?? 0,
       rating: item.rating,
-      photoUrl: photoUrl(item.photos?.[0]?.photo_reference),
       types,
       category: mapCategory(types),
     };
   });
-};
-
-export const getPlaceDetails = async (
-  placeId: string,
-): Promise<PlaceSearchResult | null> => {
-  const API_KEY = getApiKey();
-  if (!API_KEY) {
-    throw new Error('GOOGLE_MAPS_API_KEY가 설정되지 않았습니다.');
-  }
-
-  const params = new URLSearchParams({
-    place_id: placeId,
-    key: API_KEY,
-    language: 'ko',
-    fields:
-      'place_id,name,formatted_address,geometry,rating,photos,types',
-  });
-
-  const res = await fetch(
-    `https://maps.googleapis.com/maps/api/place/details/json?${params}`,
-  );
-  const data = (await res.json()) as {
-    status: string;
-    result?: GoogleTextSearchResult;
-    error_message?: string;
-  };
-
-  if (data.status !== 'OK' || !data.result) {
-    return null;
-  }
-
-  const item = data.result;
-  const types = item.types ?? [];
-
-  return {
-    googlePlaceId: item.place_id,
-    name: item.name,
-    address: item.formatted_address ?? '',
-    lat: item.geometry?.location.lat ?? 0,
-    lng: item.geometry?.location.lng ?? 0,
-    rating: item.rating,
-    photoUrl: photoUrl(item.photos?.[0]?.photo_reference),
-    types,
-    category: mapCategory(types),
-  };
+  remember(cacheKey, results, DAY_MS);
+  return results;
 };
 
 interface AddressComponent {
@@ -216,46 +175,39 @@ const fetchCityDetails = async (
   return toCityResult(data.result);
 };
 
-const searchCitiesByText = async (
-  query: string,
-): Promise<CitySearchResult[]> => {
+// 선택한 도시 1곳만 Place Details를 호출한다
+export const getCityDetails = async (
+  placeId: string,
+): Promise<CitySearchResult | null> => {
   const API_KEY = getApiKey();
-  const params = new URLSearchParams({
-    query,
-    type: 'locality',
-    key: API_KEY,
-    language: 'ko',
-  });
-  const res = await fetch(
-    `https://maps.googleapis.com/maps/api/place/textsearch/json?${params}`,
-  );
-  const data = (await res.json()) as {
-    status: string;
-    results?: GooglePlaceDetailsResult[];
-    error_message?: string;
-  };
-  if (data.status !== 'OK' && data.status !== 'ZERO_RESULTS') {
-    throw new Error(
-      data.error_message ?? `도시 검색 실패: ${data.status}`,
-    );
+  if (!API_KEY) {
+    throw new Error('GOOGLE_MAPS_API_KEY가 설정되지 않았습니다.');
   }
-  const mapped = await Promise.all(
-    (data.results ?? []).slice(0, 6).map((item) => fetchCityDetails(item.place_id)),
-  );
-  return mapped.filter((item): item is CitySearchResult => item != null);
+  const cacheKey = `city:${placeId}`;
+  const cached = recall<CitySearchResult>(cacheKey);
+  if (cached) return cached;
+  const detail = await fetchCityDetails(placeId);
+  if (detail) remember(cacheKey, detail, 7 * DAY_MS);
+  return detail;
 };
 
+// 2026-10-02 입력 중에는 자동완성만. 상세 좌표는 선택 후 1회
 // 2026-09-04 일정 생성용 국가·도시 검색. POI는 제외
 export const searchCities = async (
   query: string,
-): Promise<CitySearchResult[]> => {
+): Promise<CitySuggestion[]> => {
   const API_KEY = getApiKey();
   if (!API_KEY) {
     throw new Error('GOOGLE_MAPS_API_KEY가 설정되지 않았습니다.');
   }
 
+  const text = query.trim();
+  const cacheKey = `ac:${text.toLowerCase()}`;
+  const cached = recall<CitySuggestion[]>(cacheKey);
+  if (cached) return cached;
+
   const params = new URLSearchParams({
-    input: query,
+    input: text,
     types: '(cities)',
     language: 'ko',
     key: API_KEY,
@@ -265,29 +217,25 @@ export const searchCities = async (
   );
   const data = (await res.json()) as {
     status: string;
-    predictions?: { place_id: string }[];
+    predictions?: {
+      place_id: string;
+      description: string;
+      structured_formatting?: { secondary_text?: string };
+    }[];
     error_message?: string;
   };
 
   if (data.status !== 'OK' && data.status !== 'ZERO_RESULTS') {
-    return searchCitiesByText(query);
+    throw new Error(data.error_message ?? `도시 검색 실패: ${data.status}`);
   }
 
-  const predictions = data.predictions ?? [];
-  if (predictions.length === 0) {
-    return searchCitiesByText(query);
-  }
-
-  const mapped = await Promise.all(
-    predictions.slice(0, 6).map((p) => fetchCityDetails(p.place_id)),
-  );
-  const unique = new Map<string, CitySearchResult>();
-  mapped.forEach((item) => {
-    if (item && !unique.has(item.googlePlaceId)) {
-      unique.set(item.googlePlaceId, item);
-    }
-  });
-  return [...unique.values()];
+  const suggestions = (data.predictions ?? []).slice(0, 5).map((item) => ({
+    googlePlaceId: item.place_id,
+    label: item.description,
+    address: item.structured_formatting?.secondary_text || item.description,
+  }));
+  remember(cacheKey, suggestions, DAY_MS);
+  return suggestions;
 };
 
 // 2026-09-01 여행지 근처 병원·의원 (거리순)
@@ -428,7 +376,9 @@ const nearbyByType = async (
   return data.results ?? [];
 };
 
-const getPlacePhone = async (placeId: string): Promise<string | undefined> => {
+const readPlacePhone = async (
+  placeId: string,
+): Promise<{ ok: boolean; phone: string | null }> => {
   const API_KEY = getApiKey();
   const params = new URLSearchParams({
     place_id: placeId,
@@ -446,17 +396,36 @@ const getPlacePhone = async (placeId: string): Promise<string | undefined> => {
       formatted_phone_number?: string;
     };
   };
-  if (data.status !== 'OK' || !data.result) return undefined;
-  return (
-    data.result.international_phone_number ||
-    data.result.formatted_phone_number
-  );
+  if (data.status !== 'OK') return { ok: false, phone: null };
+  return {
+    ok: true,
+    phone:
+      data.result?.international_phone_number ||
+      data.result?.formatted_phone_number ||
+      null,
+  };
+};
+
+export const lookupPlacePhone = async (
+  placeId: string,
+): Promise<string | undefined> => {
+  const API_KEY = getApiKey();
+  if (!API_KEY) {
+    throw new Error('GOOGLE_MAPS_API_KEY가 설정되지 않았습니다.');
+  }
+  const cacheKey = `phone:${placeId}`;
+  const cached = recall<{ phone: string | null }>(cacheKey);
+  if (cached) return cached.phone ?? undefined;
+  const result = await readPlacePhone(placeId);
+  if (!result.ok) return undefined;
+  remember(cacheKey, { phone: result.phone }, 7 * DAY_MS);
+  return result.phone ?? undefined;
 };
 
 export const searchNearbyHospitals = async (
   lat: number,
   lng: number,
-  options?: { limit?: number; withPhones?: boolean },
+  options?: { limit?: number },
 ): Promise<NearbyHospital[]> => {
   const API_KEY = getApiKey();
   if (!API_KEY) {
@@ -464,6 +433,10 @@ export const searchNearbyHospitals = async (
   }
 
   const limit = Math.min(Math.max(options?.limit ?? 5, 1), 8);
+  const cacheKey = `near:${lat.toFixed(3)}:${lng.toFixed(3)}:${limit}`;
+  const cached = recall<NearbyHospital[]>(cacheKey);
+  if (cached) return cached;
+
   const results = await nearbyByType(lat, lng, 'hospital');
   const origin = { lat, lng };
   const merged = new Map<string, NearbyHospital>();
@@ -501,14 +474,6 @@ export const searchNearbyHospitals = async (
   const top = [...merged.values()]
     .sort((a, b) => a.distanceMeters - b.distanceMeters)
     .slice(0, limit);
-
-  if (options?.withPhones) {
-    await Promise.all(
-      top.map(async (h) => {
-        h.phone = await getPlacePhone(h.googlePlaceId);
-      }),
-    );
-  }
-
+  remember(cacheKey, top, DAY_MS);
   return top;
 };

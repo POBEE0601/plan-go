@@ -259,7 +259,6 @@ export const useTravelStore = create<TravelStore>((set, get) => ({
         lng: result.lng,
         category: result.category,
         rating: result.rating,
-        photoUrl: result.photoUrl,
         types: result.types,
       });
       set((state) => ({

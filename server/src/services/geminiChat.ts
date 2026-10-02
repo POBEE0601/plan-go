@@ -461,18 +461,6 @@ const routeTool = async (
 };
 
 const loadBestRoute = async (from: Place, to: Place): Promise<RouteDetail | null> => {
-  const transit = await getRouteDetails(
-    from.lat,
-    from.lng,
-    to.lat,
-    to.lng,
-    from.name,
-    to.name,
-    'transit',
-  );
-  const transitRoute = transit.routes.find((route) => route.mode === 'transit');
-  if (transitRoute?.steps.length) return transitRoute;
-
   const driving = await getRouteDetails(
     from.lat,
     from.lng,
@@ -486,5 +474,5 @@ const loadBestRoute = async (from: Place, to: Place): Promise<RouteDetail | null
   if (drivingRoute && (drivingRoute.steps.length || drivingRoute.durationText)) {
     return drivingRoute;
   }
-  return transitRoute ?? null;
+  return drivingRoute ?? null;
 };

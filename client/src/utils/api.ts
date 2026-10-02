@@ -19,8 +19,7 @@ import type {
   PlanExpense,
   PrepItem,
   CitySearchResult,
-  RouteDetailsResponse,
-  TransitSummary,
+  CitySuggestion,
   TravelPlan,
 } from '../types/travel';
 import type { AiChatMessage, AiChatResponse } from '../types/ai';
@@ -28,6 +27,23 @@ import type { AuthResponse, LoginData, RegisterData, User } from '../types/user'
 
 const API_BASE = '/api';
 const TOKEN_KEY = 'plan-go-token';
+
+const isBillablePlacePhoto = (url: string): boolean =>
+  /maps\.googleapis\.com\/maps\/api\/place\/photo/i.test(url) ||
+  /[?&]photo_reference=/i.test(url);
+
+const stripBillablePhotos = (value: unknown): void => {
+  if (!value || typeof value !== 'object') return;
+  if (Array.isArray(value)) {
+    value.forEach(stripBillablePhotos);
+    return;
+  }
+  const record = value as Record<string, unknown>;
+  if (typeof record.photoUrl === 'string' && isBillablePlacePhoto(record.photoUrl)) {
+    delete record.photoUrl;
+  }
+  Object.values(record).forEach(stripBillablePhotos);
+};
 
 export const getStoredToken = (): string | null =>
   localStorage.getItem(TOKEN_KEY);
@@ -77,7 +93,9 @@ async function request<T>(
     return undefined as T;
   }
 
-  return response.json() as Promise<T>;
+  const body = (await response.json()) as T;
+  stripBillablePhotos(body);
+  return body;
 }
 
 /** multipart 업로드 (Content-Type 자동 설정) */
@@ -107,7 +125,9 @@ async function requestForm<T>(
     throw new Error(error.message ?? '요청 처리 중 오류가 발생했습니다.');
   }
 
-  return response.json() as Promise<T>;
+  const body = (await response.json()) as T;
+  stripBillablePhotos(body);
+  return body;
 }
 
 export const authApi = {
@@ -136,51 +156,25 @@ export const placesApi = {
 
   searchCities: (q: string) => {
     const params = new URLSearchParams({ q });
-    return request<CitySearchResult[]>(`/places/cities?${params}`);
+    return request<CitySuggestion[]>(`/places/cities?${params}`);
   },
 
-  nearbyHospitals: (
-    lat: number,
-    lng: number,
-    options?: { limit?: number; phones?: boolean },
-  ) => {
+  cityDetail: (placeId: string) =>
+    request<CitySearchResult>(`/places/cities/${encodeURIComponent(placeId)}`),
+
+  nearbyHospitals: (lat: number, lng: number, options?: { limit?: number }) => {
     const params = new URLSearchParams({
       lat: String(lat),
       lng: String(lng),
       limit: String(options?.limit ?? 5),
     });
-    if (options?.phones) params.set('phones', '1');
     return request<NearbyHospital[]>(`/places/nearby-hospitals?${params}`);
   },
 
-  transit: (fromLat: number, fromLng: number, toLat: number, toLng: number) => {
-    const params = new URLSearchParams({
-      fromLat: String(fromLat),
-      fromLng: String(fromLng),
-      toLat: String(toLat),
-      toLng: String(toLng),
-    });
-    return request<TransitSummary>(`/places/transit?${params}`);
-  },
-
-  directions: (
-    fromLat: number,
-    fromLng: number,
-    toLat: number,
-    toLng: number,
-    fromName?: string,
-    toName?: string,
-  ) => {
-    const params = new URLSearchParams({
-      fromLat: String(fromLat),
-      fromLng: String(fromLng),
-      toLat: String(toLat),
-      toLng: String(toLng),
-    });
-    if (fromName) params.set('fromName', fromName);
-    if (toName) params.set('toName', toName);
-    return request<RouteDetailsResponse>(`/places/directions?${params}`);
-  },
+  placePhone: (placeId: string) =>
+    request<{ phone: string | null }>(
+      `/places/phone/${encodeURIComponent(placeId)}`,
+    ),
 };
 
 export const boardApi = {

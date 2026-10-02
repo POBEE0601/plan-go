@@ -193,3 +193,9 @@ export interface CitySearchResult {
   lat: number;
   lng: number;
 }
+
+export interface CitySuggestion {
+  googlePlaceId: string;
+  label: string;
+  address: string;
+}
