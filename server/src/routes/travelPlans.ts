@@ -13,6 +13,7 @@ import {
   deleteTravelPlan,
   getInviteByToken,
   getTravelPlanById,
+  getPlanSyncRevision,
   getAccessiblePlans,
   getMemberRole,
   inviteByEmail,
@@ -92,15 +93,34 @@ router.get('/', async (req: AuthRequest, res) => {
   res.json(await getAccessiblePlans(req.userId!));
 });
 
+router.get('/:id/revision', async (req: AuthRequest, res) => {
+  const revision = await getPlanSyncRevision(
+    param(req.params.id),
+    req.userId!,
+  );
+  if (!revision) {
+    res.status(404).json({ message: '여행 계획을 찾을 수 없습니다.' });
+    return;
+  }
+  res.json({ revision });
+});
+
 router.get('/:id', async (req: AuthRequest, res) => {
-  const plan = await getTravelPlanById(param(req.params.id), req.userId!);
+  const plan = await getTravelPlanById(param(req.params.id), req.userId!, {
+    hydratePhotos: req.query.sync !== '1',
+  });
   if (!plan) {
     res.status(404).json({ message: '여행 계획을 찾을 수 없습니다.' });
     return;
   }
+  const syncRevision = await getPlanSyncRevision(
+    plan.id,
+    req.userId!,
+  );
   res.json({
     ...plan,
     myRole: getMemberRole(plan, req.userId!),
+    syncRevision,
   });
 });
 

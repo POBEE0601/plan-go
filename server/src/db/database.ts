@@ -10,7 +10,7 @@ import type {
   BoardPostPublic,
 } from '../types/board.js';
 import type { NoticePost, NoticePostPublic } from '../types/notice.js';
-import { publicPhotoUrl } from '../services/placePhoto.js';
+import { publicPhotoUrl, ensurePlacePhoto, hydratePlanPhotos } from '../services/placePhoto.js';
 import type {
   DeployStatus,
   ReleasePost,
@@ -330,6 +330,56 @@ export const getMemberRole = (
 export const canRead = (plan: TravelPlan, userId: string): boolean =>
   getMemberRole(plan, userId) != null;
 
+// 같이 쓰는 일정만, 내용이 바뀌었을 때 전체를 다시 받기 위한 짧은 지문
+export const getPlanSyncRevision = async (
+  planId: string,
+  userId: string,
+): Promise<string | null> => {
+  const { rows } = await pool.query(
+    `SELECT CASE
+        WHEN EXISTS (
+          SELECT 1 FROM travel_plans p
+          WHERE p.id = $1
+            AND (
+              p.user_id = $2
+              OR EXISTS (
+                SELECT 1 FROM plan_members m
+                WHERE m.plan_id = p.id AND m.user_id = $2 AND m.status = 'accepted'
+              )
+            )
+        )
+        THEN md5(concat_ws(chr(30),
+        (SELECT concat_ws(chr(31), p.title, p.start_date::text, p.end_date::text,
+                coalesce(p.region_name, ''), coalesce(p.prep_memo, ''),
+                coalesce(p.custom_categories::text, ''))
+         FROM travel_plans p
+         WHERE p.id = $1),
+        (SELECT coalesce(string_agg(concat_ws(chr(31), id, name, coalesce(address, ''),
+                category, coalesce(pin_color, ''), lat::text, lng::text,
+                coalesce(memo, ''), coalesce(photo_url, '')), chr(30) ORDER BY id), '')
+         FROM places WHERE plan_id = $1),
+        (SELECT coalesce(string_agg(concat_ws(chr(31), id, place_id, day_index::text,
+                sort_order::text, coalesce(time, ''), coalesce(memo, '')), chr(30) ORDER BY id), '')
+         FROM day_assignments WHERE plan_id = $1),
+        (SELECT coalesce(string_agg(concat_ws(chr(31), id, label, checked::text,
+                sort_order::text, coalesce(detail, '')), chr(30) ORDER BY id), '')
+         FROM plan_prep_items WHERE plan_id = $1),
+        (SELECT coalesce(string_agg(concat_ws(chr(31), id, coalesce(user_id, ''),
+                role, status), chr(30) ORDER BY id), '')
+         FROM plan_members WHERE plan_id = $1),
+        (SELECT coalesce(string_agg(concat_ws(chr(31), id, coalesce(day_index::text, ''),
+                coalesce(place_id, ''), amount::text, currency, merchant, method, note),
+                chr(30) ORDER BY id), '')
+         FROM plan_expenses WHERE plan_id = $1)
+      ))
+        ELSE NULL
+      END AS revision`,
+    [planId, userId],
+  );
+  const revision = rows[0]?.revision;
+  return typeof revision === 'string' && revision.length > 0 ? revision : null;
+};
+
 export const canWrite = (plan: TravelPlan, userId: string): boolean => {
   const role = getMemberRole(plan, userId);
   return role === 'owner' || role === 'editor';
@@ -468,12 +518,23 @@ export const seedPrepIfNeeded = async (planId: string): Promise<void> => {
 export const getTravelPlanById = async (
   id: string,
   userId?: string,
+  options?: { hydratePhotos?: boolean },
 ): Promise<TravelPlan | null> => {
   await seedPrepIfNeeded(id);
   const plan = await loadPlan(id);
   if (!plan) return null;
   if (userId && !canRead(plan, userId)) return null;
-  return plan;
+  if (options?.hydratePhotos === false) return plan;
+  try {
+    await hydratePlanPhotos(plan.id);
+    const fresh = await loadPlan(id);
+    if (!fresh) return null;
+    if (userId && !canRead(fresh, userId)) return null;
+    return fresh;
+  } catch (err) {
+    console.warn('장소 사진 준비 실패:', err);
+    return plan;
+  }
 };
 
 export const createTravelPlan = async (
@@ -824,6 +885,16 @@ export const addPlace = async (
     throw new Error('이미 등록된 장소입니다.');
   }
 
+  const photo = body.photoReference
+    ? await ensurePlacePhoto({
+        googlePlaceId: body.googlePlaceId,
+        photoRef: body.photoReference,
+      }).catch((err) => {
+        console.warn('장소 사진 저장 실패:', err);
+        return undefined;
+      })
+    : undefined;
+
   const created: Place = {
     id: generateId(),
     planId,
@@ -845,7 +916,7 @@ export const addPlace = async (
         } as Record<string, string>
       )[body.category ?? 'attraction'],
     rating: body.rating,
-    photoUrl: publicPhotoUrl(body.photoUrl),
+    photoUrl: photo?.url ?? publicPhotoUrl(body.photoUrl),
     memo: body.memo,
     types: body.types,
     createdAt: new Date().toISOString(),
@@ -853,8 +924,8 @@ export const addPlace = async (
 
   await pool.query(
     `INSERT INTO places
-      (id, plan_id, google_place_id, name, address, lat, lng, category, rating, photo_url, memo, types, pin_color, created_at)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
+      (id, plan_id, google_place_id, name, address, lat, lng, category, rating, photo_url, memo, types, pin_color, created_at, photo_ref, photo_cached_at)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)`,
     [
       created.id,
       created.planId,
@@ -870,6 +941,8 @@ export const addPlace = async (
       created.types ? JSON.stringify(created.types) : null,
       created.pinColor ?? null,
       created.createdAt,
+      body.photoReference?.trim() || null,
+      photo?.fetchedAt.toISOString() ?? null,
     ],
   );
 

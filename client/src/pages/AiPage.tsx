@@ -415,7 +415,7 @@ const ensurePlace = async (
     lng: item.lng,
     category: item.category,
     rating: item.rating,
-    photoUrl: item.photoUrl,
+    photoReference: item.photoReference,
     types: item.types,
   });
   places.push(created);

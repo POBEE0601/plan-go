@@ -1,6 +1,7 @@
+// 2026-10-06 체크리스트는 칸을 벗어날 때 저장. 쓰는 중에는 서버 값으로 되돌리지 않는다
 // 2026-09-04 여행 준비 체크리스트·자유 메모
 // 2026-09-04 제목 클릭 시 항목별 상세 펼침. 진행 바는 헤더로 이동
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   Check,
   ChevronDown,
@@ -34,32 +35,26 @@ function PrepItemRow({
     useTravelStore();
   const [detail, setDetail] = useState(item.detail ?? '');
   const [saving, setSaving] = useState(false);
+  const focusedRef = useRef(false);
+  const detailRef = useRef(detail);
+  detailRef.current = detail;
 
   useEffect(() => {
+    if (focusedRef.current) return;
     setDetail(item.detail ?? '');
   }, [item.id, item.detail]);
 
-  // 상세 내용은 입력 후 잠시 뒤 저장
-  useEffect(() => {
-    if (!canWrite || !expanded) return;
-    if (detail === (item.detail ?? '')) return;
-    const timer = window.setTimeout(async () => {
-      setSaving(true);
-      try {
-        await updatePrepItemDetail(item.id, detail);
-      } finally {
-        setSaving(false);
-      }
-    }, 450);
-    return () => window.clearTimeout(timer);
-  }, [
-    canWrite,
-    expanded,
-    detail,
-    item.id,
-    item.detail,
-    updatePrepItemDetail,
-  ]);
+  const saveDetail = async () => {
+    if (!canWrite) return;
+    const value = detailRef.current;
+    if (value === (item.detail ?? '')) return;
+    setSaving(true);
+    try {
+      await updatePrepItemDetail(item.id, value);
+    } finally {
+      setSaving(false);
+    }
+  };
 
   return (
     <li className="rounded-lg px-1 py-1 hover:bg-slate-50">
@@ -113,6 +108,13 @@ function PrepItemRow({
           <textarea
             value={detail}
             onChange={(e) => setDetail(e.target.value)}
+            onFocus={() => {
+              focusedRef.current = true;
+            }}
+            onBlur={() => {
+              focusedRef.current = false;
+              void saveDetail();
+            }}
             disabled={!canWrite}
             rows={3}
             maxLength={4000}
@@ -120,7 +122,7 @@ function PrepItemRow({
             className="w-full resize-none rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-900 outline-none focus:border-primary-500 disabled:bg-slate-50"
           />
           <p className="mt-0.5 text-right text-[11px] text-slate-400">
-            {saving ? '저장 중…' : canWrite ? '자동 저장' : '읽기 전용'}
+            {saving ? '저장 중…' : canWrite ? '칸 밖을 누르면 저장' : '읽기 전용'}
           </p>
         </div>
       )}
@@ -145,38 +147,30 @@ export default function PrepBoardModal({
   const [savingMemo, setSavingMemo] = useState(false);
   const [adding, setAdding] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const memoFocused = useRef(false);
+  const memoRef = useRef(memo);
+  memoRef.current = memo;
 
   useEffect(() => {
-    if (open) {
-      setMemo(selectedPlan?.prepMemo ?? '');
-      setExpandedId(null);
-    }
+    if (!open || memoFocused.current) return;
+    setMemo(selectedPlan?.prepMemo ?? '');
+  }, [open, selectedPlan?.id, selectedPlan?.prepMemo]);
+
+  useEffect(() => {
+    if (open) setExpandedId(null);
   }, [open, selectedPlan?.id]);
 
-  useEffect(() => {
-    if (open) setMemo(selectedPlan?.prepMemo ?? '');
-  }, [open, selectedPlan?.prepMemo]);
-
-  useEffect(() => {
-    if (!open || !canWrite || !selectedPlan) return;
-    if (memo === (selectedPlan.prepMemo ?? '')) return;
-    const timer = window.setTimeout(async () => {
-      setSavingMemo(true);
-      try {
-        await updatePrepMemo(memo);
-      } finally {
-        setSavingMemo(false);
-      }
-    }, 500);
-    return () => window.clearTimeout(timer);
-  }, [
-    memo,
-    open,
-    canWrite,
-    selectedPlan?.id,
-    selectedPlan?.prepMemo,
-    updatePrepMemo,
-  ]);
+  const flushMemo = async () => {
+    if (!canWrite || !selectedPlan) return;
+    const value = memoRef.current;
+    if (value === (selectedPlan.prepMemo ?? '')) return;
+    setSavingMemo(true);
+    try {
+      await updatePrepMemo(value);
+    } finally {
+      setSavingMemo(false);
+    }
+  };
 
   if (!open || !selectedPlan) return null;
 
@@ -221,7 +215,10 @@ export default function PrepBoardModal({
           </div>
           <button
             type="button"
-            onClick={onClose}
+            onClick={() => {
+              void flushMemo();
+              onClose();
+            }}
             className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100"
             aria-label="닫기"
           >
@@ -286,6 +283,13 @@ export default function PrepBoardModal({
           <textarea
             value={memo}
             onChange={(e) => setMemo(e.target.value)}
+            onFocus={() => {
+              memoFocused.current = true;
+            }}
+            onBlur={() => {
+              memoFocused.current = false;
+              void flushMemo();
+            }}
             disabled={!canWrite}
             rows={5}
             maxLength={8000}
@@ -293,7 +297,7 @@ export default function PrepBoardModal({
             className="w-full resize-none rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-900 outline-none focus:border-primary-500 disabled:bg-slate-50"
           />
           <p className="mt-1 text-right text-[11px] text-slate-400">
-            {savingMemo ? '저장 중…' : canWrite ? '자동 저장' : '읽기 전용'}
+            {savingMemo ? '저장 중…' : canWrite ? '칸 밖을 누르면 저장' : '읽기 전용'}
           </p>
         </div>
       </div>

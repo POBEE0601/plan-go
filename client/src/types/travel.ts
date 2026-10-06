@@ -131,6 +131,7 @@ export interface PlaceSearchResult {
   lng: number;
   rating?: number;
   photoUrl?: string;
+  photoReference?: string;
   types: string[];
   category: PlaceCategory;
 }

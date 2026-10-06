@@ -147,6 +147,7 @@ export interface CreatePlaceBody {
   pinColor?: string;
   rating?: number;
   photoUrl?: string;
+  photoReference?: string;
   memo?: string;
   types?: string[];
   state?: string;
@@ -180,6 +181,7 @@ export interface PlaceSearchResult {
   lng: number;
   rating?: number;
   photoUrl?: string;
+  photoReference?: string;
   types: string[];
   category: PlaceCategory;
 }

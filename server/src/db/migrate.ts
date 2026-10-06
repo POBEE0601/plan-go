@@ -66,6 +66,32 @@ export const ensurePlaceMetaSchema = async (): Promise<void> => {
     `UPDATE places SET category = 'attraction'
      WHERE category IN ('hotel', 'other') OR category IS NULL OR category = ''`,
   );
+  await pool.query(
+    `ALTER TABLE places ADD COLUMN IF NOT EXISTS photo_ref TEXT`,
+  );
+  await pool.query(
+    `ALTER TABLE places ADD COLUMN IF NOT EXISTS photo_cached_at TIMESTAMPTZ`,
+  );
+  await pool.query(`
+    UPDATE places
+    SET photo_ref = substring(photo_url from 'photo_reference=([^&]+)')
+    WHERE (photo_ref IS NULL OR photo_ref = '')
+      AND photo_url LIKE '%photo_reference=%'
+  `);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS place_photo_files (
+      cache_key TEXT PRIMARY KEY,
+      url TEXT NOT NULL,
+      stored_name TEXT NOT NULL,
+      fetched_at TIMESTAMPTZ NOT NULL
+    )
+  `);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS maps_photo_budget (
+      month TEXT PRIMARY KEY,
+      used INTEGER NOT NULL DEFAULT 0
+    )
+  `);
   // 2026-09-23 여행별 커스텀 카테고리
   await pool.query(
     `ALTER TABLE travel_plans

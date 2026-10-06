@@ -43,6 +43,11 @@ import {
   X,
 } from 'lucide-react';
 import { useTravelStore } from '../store/useTravelStore';
+import {
+  armDragGesture,
+  holdTextSelectionLock,
+  pausePlanSync,
+} from '../utils/dragLock';
 import { usePlanUiStore } from '../store/usePlanUiStore';
 import {
   categoryBadge,
@@ -237,9 +242,13 @@ function SortableAssignment({
         {canWrite && (
           <button
             type="button"
-            className="mt-0.5 min-h-10 min-w-10 cursor-grab touch-none p-1.5 text-slate-300 active:cursor-grabbing"
+            className="mt-0.5 min-h-10 min-w-10 cursor-grab touch-none select-none p-1.5 text-slate-300 active:cursor-grabbing"
             {...attributes}
             {...listeners}
+            onPointerDown={(event) => {
+              listeners?.onPointerDown?.(event);
+              armDragGesture();
+            }}
           >
             <GripVertical className="h-4 w-4" />
           </button>
@@ -330,9 +339,13 @@ function DraggablePoolPlace({
         {canWrite && (
           <button
             type="button"
-            className="mt-0.5 min-h-10 min-w-10 cursor-grab touch-none p-1.5 text-slate-300"
+            className="mt-0.5 min-h-10 min-w-10 cursor-grab touch-none select-none p-1.5 text-slate-300"
             {...attributes}
             {...listeners}
+            onPointerDown={(event) => {
+              listeners?.onPointerDown?.(event);
+              armDragGesture();
+            }}
           >
             <GripVertical className="h-4 w-4" />
           </button>
@@ -516,6 +529,7 @@ export default function ClassicPlacePoolBoard({ canWrite }: PlacePoolBoardProps)
   const { activeDay, setActiveDay } = usePlanUiStore();
 
   const [activeId, setActiveId] = useState<string | null>(null);
+  const dragRelease = useRef<(() => void) | null>(null);
   const [poolOpen, setPoolOpen] = useState(false);
   const [poolFilter, setPoolFilter] = useState<PlaceCategory | 'all'>('all');
   const [isDesktop, setIsDesktop] = useState(
@@ -573,12 +587,25 @@ export default function ClassicPlacePoolBoard({ canWrite }: PlacePoolBoardProps)
 
   if (!selectedPlan) return null;
 
+  const endDragGesture = () => {
+    dragRelease.current?.();
+    dragRelease.current = null;
+    setActiveId(null);
+  };
+
   const handleDragStart = (event: DragStartEvent) => {
+    endDragGesture();
+    const releaseSelect = holdTextSelectionLock();
+    const releaseSync = pausePlanSync();
+    dragRelease.current = () => {
+      releaseSelect();
+      releaseSync();
+    };
     setActiveId(String(event.active.id));
   };
 
   const handleDragEnd = async (event: DragEndEvent) => {
-    setActiveId(null);
+    endDragGesture();
     if (!canWrite) return;
 
     const { active, over } = event;
@@ -742,6 +769,7 @@ export default function ClassicPlacePoolBoard({ canWrite }: PlacePoolBoardProps)
       collisionDetection={closestCorners}
       onDragStart={handleDragStart}
       onDragEnd={handleDragEnd}
+      onDragCancel={endDragGesture}
     >
       <div className="flex h-full min-h-0 flex-col overflow-hidden bg-white">
         {isDesktop ? (

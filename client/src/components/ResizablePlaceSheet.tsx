@@ -12,6 +12,7 @@ import {
   type PointerEvent,
   type ReactNode,
 } from 'react';
+import { armDragGesture } from '../utils/dragLock';
 
 const MAX_RATIO = 0.9;
 
@@ -140,6 +141,8 @@ export default function ResizablePlaceSheet({
   const onPointerDown = (e: PointerEvent<HTMLButtonElement>) => {
     e.preventDefault();
     e.stopPropagation();
+    e.currentTarget.setPointerCapture(e.pointerId);
+    armDragGesture();
     drag.current = {
       active: true,
       startY: e.clientY,
@@ -192,7 +195,7 @@ export default function ResizablePlaceSheet({
       <button
         ref={grabberRef}
         type="button"
-        className="flex w-full shrink-0 touch-none flex-col items-center pb-2 pt-3"
+        className="flex w-full shrink-0 touch-none select-none flex-col items-center pb-2 pt-3"
         aria-label="장소 영역 높이 조절"
         onPointerDown={onPointerDown}
       >

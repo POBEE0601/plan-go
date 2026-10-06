@@ -84,6 +84,52 @@ const saveCloud = async (
   return data.publicUrl;
 };
 
+export const savePublicBuffer = async (
+  storedName: string,
+  body: Buffer,
+  contentType: string,
+): Promise<string> => {
+  const sb = getClient();
+  if (!sb && process.env.NODE_ENV === 'production') {
+    throw new Error(
+      '배포 환경에서는 SUPABASE_SERVICE_ROLE_KEY가 필요합니다. 장소 사진이 유지되지 않습니다.',
+    );
+  }
+  if (sb) {
+    await ensureBucket(sb);
+    const { error } = await sb.storage.from(BUCKET).upload(storedName, body, {
+      contentType,
+      upsert: true,
+    });
+    if (error) {
+      throw new Error(`장소 사진 저장에 실패했습니다: ${error.message}`);
+    }
+    const { data } = sb.storage.from(BUCKET).getPublicUrl(storedName);
+    return data.publicUrl;
+  }
+  fs.mkdirSync(path.dirname(path.join(uploadsDir, storedName)), { recursive: true });
+  fs.writeFileSync(path.join(uploadsDir, storedName), body);
+  return `/uploads/${storedName}`;
+};
+
+export const removeStoredObject = async (storedName: string): Promise<void> => {
+  const sb = getClient();
+  if (sb && !storedName.startsWith('/')) {
+    await sb.storage.from(BUCKET).remove([storedName]);
+    return;
+  }
+  const relative = storedName.replace(/^\/+/, '');
+  if (!relative || relative.includes('..')) return;
+  const full = path.join(uploadsDir, relative);
+  if (fs.existsSync(full)) {
+    try {
+      fs.unlinkSync(full);
+    } catch {
+      // 로컬 파일 삭제 실패는 무시
+    }
+  }
+};
+
 export const saveUploads = async (
   files: Express.Multer.File[] | undefined,
 ): Promise<BoardAttachment[]> => {

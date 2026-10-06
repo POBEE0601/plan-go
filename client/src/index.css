@@ -22,6 +22,13 @@
     min-height: 100dvh;
   }
 
+  /* 일정 손잡이를 끄는 동안 브라우저가 글자를 블록으로 잡지 않게 */
+  html.plan-dragging,
+  html.plan-dragging * {
+    user-select: none !important;
+    -webkit-user-select: none !important;
+  }
+
   /* iOS에서 16px 미만 input 포커스 시 자동 줌 방지 */
   @media (max-width: 767px) {
     input,

@@ -13,6 +13,7 @@ import type {
   TravelPlan,
 } from '../types/travel';
 import { travelApi } from '../utils/api';
+import { isPlanSyncPaused } from '../utils/dragLock';
 import { bindCustomCategoryGetter } from '../utils/days';
 
 interface TravelStore {
@@ -39,6 +40,7 @@ interface TravelStore {
   deleteTravelPlan: (id: string) => Promise<void>;
   leaveTravelPlan: (id: string) => Promise<void>;
   refreshSelectedPlan: () => Promise<void>;
+  syncSelectedPlan: () => Promise<void>;
 
   addPlaceFromSearch: (result: PlaceSearchResult) => Promise<Place | void>;
   updatePlaceMeta: (
@@ -93,6 +95,9 @@ interface TravelStore {
 
 const canWriteRole = (role: MemberRole | null) =>
   role === 'owner' || role === 'editor';
+
+let planSyncing = false;
+const planRevisions = new Map<string, string>();
 
 const detachPlanFromStore = async (
   get: () => TravelStore,
@@ -158,6 +163,7 @@ export const useTravelStore = create<TravelStore>((set, get) => ({
     set({ error: null });
     try {
       const plan = await travelApi.getPlan(id);
+      if (plan.syncRevision) planRevisions.set(plan.id, plan.syncRevision);
       // 등록 장소가 있으면 첫 장소, 없으면 계획 지역으로 지도 시작
       const firstPlace = plan.places[0];
       let mapCenter = get().mapCenter;
@@ -243,6 +249,38 @@ export const useTravelStore = create<TravelStore>((set, get) => ({
     if (id) await get().selectPlan(id);
   },
 
+  // 다른 멤버가 넣은 장소·일정만 반영한다. 지도 위치는 건드리지 않는다
+  syncSelectedPlan: async () => {
+    const id = get().selectedPlanId;
+    const planNow = get().selectedPlan;
+    if (!id || !planNow || planNow.id !== id || planSyncing) return;
+    if (isPlanSyncPaused()) return;
+    const shared =
+      planNow.members.filter((member) => member.status === 'accepted').length >=
+        2 || planNow.members.some((member) => member.status === 'pending');
+    if (!shared) return;
+    planSyncing = true;
+    try {
+      const { revision } = await travelApi.getPlanRevision(id);
+      if (get().selectedPlanId !== id) return;
+      if (planRevisions.get(id) === revision) return;
+      const plan = await travelApi.getPlan(id, { sync: true });
+      if (get().selectedPlanId !== id) return;
+      planRevisions.set(id, plan.syncRevision || revision);
+      set({
+        selectedPlan: plan,
+        myRole: (plan.myRole as MemberRole) ?? get().myRole,
+        travelPlans: get().travelPlans.map((item) =>
+          item.id === plan.id ? { ...item, ...plan } : item,
+        ),
+      });
+    } catch {
+      // 잠시 끊겨도 지금 화면은 유지한다
+    } finally {
+      planSyncing = false;
+    }
+  },
+
   // 2026-09-04 검색 추가 후 일차 배정을 위해 생성된 Place 반환
   addPlaceFromSearch: async (result) => {
     const plan = get().selectedPlan;
@@ -259,6 +297,7 @@ export const useTravelStore = create<TravelStore>((set, get) => ({
         lng: result.lng,
         category: result.category,
         rating: result.rating,
+        photoReference: result.photoReference,
         types: result.types,
       });
       set((state) => ({

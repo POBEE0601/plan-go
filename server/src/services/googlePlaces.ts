@@ -8,6 +8,7 @@ import type {
   PlaceSearchResult,
 } from '../types/travel.js';
 import { DAY_MS, recall, remember } from './mapsCache.js';
+import { cachedPhotoUrls } from './placePhoto.js';
 
 // dotenv 로드 이후에 읽히도록 호출 시점에 조회
 const getApiKey = (): string => process.env.GOOGLE_MAPS_API_KEY ?? '';
@@ -50,7 +51,16 @@ export const searchPlaces = async (
     lat != null ? lat.toFixed(2) : ''
   }:${lng != null ? lng.toFixed(2) : ''}`;
   const cached = recall<PlaceSearchResult[]>(cacheKey);
-  if (cached) return cached;
+  if (cached) {
+    const stored = await cachedPhotoUrls(
+      cached.map((item) => item.googlePlaceId),
+    );
+    for (const item of cached) {
+      const url = stored.get(item.googlePlaceId);
+      if (url) item.photoUrl = url;
+    }
+    return cached;
+  }
 
   const params = new URLSearchParams({
     query,
@@ -78,7 +88,7 @@ export const searchPlaces = async (
     );
   }
 
-  const results = (data.results ?? []).slice(0, 8).map((item) => {
+  const results: PlaceSearchResult[] = (data.results ?? []).slice(0, 8).map((item) => {
     const types = item.types ?? [];
     return {
       googlePlaceId: item.place_id,
@@ -87,10 +97,18 @@ export const searchPlaces = async (
       lat: item.geometry?.location.lat ?? 0,
       lng: item.geometry?.location.lng ?? 0,
       rating: item.rating,
+      photoReference: item.photos?.[0]?.photo_reference,
       types,
       category: mapCategory(types),
     };
   });
+  const stored = await cachedPhotoUrls(
+    results.map((item) => item.googlePlaceId),
+  );
+  for (const item of results) {
+    const url = stored.get(item.googlePlaceId);
+    if (url) item.photoUrl = url;
+  }
   remember(cacheKey, results, DAY_MS);
   return results;
 };

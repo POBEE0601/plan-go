@@ -129,6 +129,7 @@ export default function DashboardPage() {
     error,
     fetchTravelPlans,
     refreshSelectedPlan,
+    syncSelectedPlan,
     clearError,
   } = useTravelStore();
   const resetPlanUi = usePlanUiStore((s) => s.resetPlanUi);
@@ -162,6 +163,20 @@ export default function DashboardPage() {
   useEffect(() => {
     fetchTravelPlans();
   }, [fetchTravelPlans]);
+
+  useEffect(() => {
+    if (!selectedPlanId) return;
+    const pull = () => {
+      if (document.visibilityState !== 'visible') return;
+      void syncSelectedPlan();
+    };
+    const timer = window.setInterval(pull, 8000);
+    document.addEventListener('visibilitychange', pull);
+    return () => {
+      window.clearInterval(timer);
+      document.removeEventListener('visibilitychange', pull);
+    };
+  }, [selectedPlanId, syncSelectedPlan]);
 
   useEffect(() => {
     const mq = window.matchMedia('(min-width: 1024px)');

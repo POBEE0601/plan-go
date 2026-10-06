@@ -38,6 +38,11 @@ import {
   X,
 } from 'lucide-react';
 import { useTravelStore } from '../store/useTravelStore';
+import {
+  armDragGesture,
+  holdTextSelectionLock,
+  pausePlanSync,
+} from '../utils/dragLock';
 import { usePlanUiStore } from '../store/usePlanUiStore';
 import {
   categoryBadge,
@@ -110,9 +115,13 @@ function CompactAssignmentRow({
       {canWrite && (
         <button
           type="button"
-          className="mt-0.5 min-h-9 min-w-8 cursor-grab touch-none p-1 text-slate-300 active:cursor-grabbing"
+          className="mt-0.5 min-h-9 min-w-8 cursor-grab touch-none select-none p-1 text-slate-300 active:cursor-grabbing"
           {...attributes}
           {...listeners}
+          onPointerDown={(event) => {
+            listeners?.onPointerDown?.(event);
+            armDragGesture();
+          }}
         >
           <GripVertical className="h-3.5 w-3.5" />
         </button>
@@ -183,9 +192,13 @@ function CompactPoolPlace({
       {canWrite && (
         <button
           type="button"
-          className="min-h-9 min-w-8 cursor-grab touch-none p-1 text-slate-300"
+          className="min-h-9 min-w-8 cursor-grab touch-none select-none p-1 text-slate-300"
           {...attributes}
           {...listeners}
+          onPointerDown={(event) => {
+            listeners?.onPointerDown?.(event);
+            armDragGesture();
+          }}
         >
           <GripVertical className="h-3.5 w-3.5" />
         </button>
@@ -563,6 +576,7 @@ export default function PlacePoolBoard({
   } = usePlanUiStore();
 
   const [activeId, setActiveId] = useState<string | null>(null);
+  const dragRelease = useRef<(() => void) | null>(null);
   // 2026-09-23 하단 시트 높이를 지도 가시 영역 보정에 사용
   const [sheetHeight, setSheetHeight] = useState(0);
   const onSheetHeight = useCallback((h: number) => setSheetHeight(h), []);
@@ -696,12 +710,25 @@ export default function PlacePoolBoard({
     return null;
   };
 
+  const endDragGesture = () => {
+    dragRelease.current?.();
+    dragRelease.current = null;
+    setActiveId(null);
+  };
+
   const handleDragStart = (event: DragStartEvent) => {
+    endDragGesture();
+    const releaseSelect = holdTextSelectionLock();
+    const releaseSync = pausePlanSync();
+    dragRelease.current = () => {
+      releaseSelect();
+      releaseSync();
+    };
     setActiveId(String(event.active.id));
   };
 
   const handleDragEnd = async (event: DragEndEvent) => {
-    setActiveId(null);
+    endDragGesture();
     if (!canWrite) return;
 
     const { active, over } = event;
@@ -854,6 +881,7 @@ export default function PlacePoolBoard({
       collisionDetection={closestCorners}
       onDragStart={handleDragStart}
       onDragEnd={handleDragEnd}
+      onDragCancel={endDragGesture}
     >
       {useMobilePlan ? (
         <div className="relative flex h-full min-h-0 flex-col overflow-hidden bg-white">

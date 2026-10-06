@@ -311,8 +311,13 @@ export const releaseApi = {
 export const travelApi = {
   getPlans: () => request<TravelPlan[]>('/travel-plans'),
 
-  getPlan: (id: string) =>
-    request<TravelPlan & { myRole?: string }>(`/travel-plans/${id}`),
+  getPlan: (id: string, options?: { sync?: boolean }) =>
+    request<TravelPlan & { myRole?: string; syncRevision?: string | null }>(
+      `/travel-plans/${id}${options?.sync ? '?sync=1' : ''}`,
+    ),
+
+  getPlanRevision: (id: string) =>
+    request<{ revision: string }>(`/travel-plans/${id}/revision`),
 
   createPlan: (data: {
     title: string;
@@ -335,9 +340,11 @@ export const travelApi = {
     request<void>(`/travel-plans/${id}/leave`, { method: 'POST' }),
 
   addPlace: (
-
     planId: string,
-    data: Omit<Place, 'id' | 'planId'> & { googlePlaceId?: string },
+    data: Omit<Place, 'id' | 'planId'> & {
+      googlePlaceId?: string;
+      photoReference?: string;
+    },
   ) =>
     request<Place>(`/travel-plans/${planId}/places`, {
       method: 'POST',
