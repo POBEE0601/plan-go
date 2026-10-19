@@ -6,6 +6,7 @@ import { useEffect, useLayoutEffect, useState } from 'react';
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import ProtectedRoute from './components/ProtectedRoute';
 import BootSplash from './components/BootSplash';
+import AdminPage from './pages/AdminPage';
 import AiPage from './pages/AiPage';
 import HomePage from './pages/HomePage';
 import LoginPage from './pages/LoginPage';
@@ -57,6 +58,14 @@ function AppRoutes() {
         element={
           <ProtectedRoute>
             <AiPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/admin"
+        element={
+          <ProtectedRoute>
+            <AdminPage />
           </ProtectedRoute>
         }
       />

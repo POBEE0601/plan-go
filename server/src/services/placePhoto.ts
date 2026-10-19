@@ -2,6 +2,7 @@
 // Place Photo 무료 한도는 월 약 1,000건. 900건에서 새 요청을 멈춘다
 import { createHash } from 'crypto';
 import { pool } from '../db/pool.js';
+import { seoulPeriod } from './apiUsage.js';
 import { removeStoredObject, savePublicBuffer } from './fileStore.js';
 
 const MONTHLY_CAP = 900;
@@ -37,14 +38,7 @@ const decodeRef = (value?: string | null): string | undefined => {
   }
 };
 
-const seoulMonth = (): string =>
-  new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'Asia/Seoul',
-    year: 'numeric',
-    month: '2-digit',
-  })
-    .format(new Date())
-    .slice(0, 7);
+const seoulMonth = (): string => seoulPeriod('month');
 
 const cacheKeyFor = (googlePlaceId?: string, photoRef?: string): string => {
   if (googlePlaceId) return `place:${googlePlaceId}`;

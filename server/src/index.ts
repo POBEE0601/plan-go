@@ -39,12 +39,17 @@ try {
   process.exit(1);
 }
 
-const { ensurePrepSchema, ensurePlaceMetaSchema, ensureExpenseSchema } =
-  await import('./db/migrate.js');
+const {
+  ensurePrepSchema,
+  ensurePlaceMetaSchema,
+  ensureExpenseSchema,
+  ensureAdminSchema,
+} = await import('./db/migrate.js');
 try {
   await ensurePrepSchema();
   await ensurePlaceMetaSchema();
   await ensureExpenseSchema();
+  await ensureAdminSchema();
 } catch (err) {
   console.error('스키마 적용 실패:', err);
   process.exit(1);

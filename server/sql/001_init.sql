@@ -6,7 +6,8 @@ CREATE TABLE IF NOT EXISTS users (
   email TEXT UNIQUE NOT NULL,
   password_hash TEXT NOT NULL,
   name TEXT NOT NULL,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  last_login_at TIMESTAMPTZ
 );
 
 CREATE TABLE IF NOT EXISTS travel_plans (
@@ -129,3 +130,10 @@ CREATE INDEX IF NOT EXISTS idx_plan_members_plan ON plan_members(plan_id);
 CREATE INDEX IF NOT EXISTS idx_plan_members_token ON plan_members(invite_token);
 CREATE INDEX IF NOT EXISTS idx_board_comments_post ON board_comments(post_id);
 CREATE INDEX IF NOT EXISTS idx_board_likes_post ON board_likes(post_id);
+
+CREATE TABLE IF NOT EXISTS api_usage (
+  period TEXT NOT NULL,
+  kind TEXT NOT NULL,
+  used INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (period, kind)
+);

@@ -466,6 +466,45 @@ export const isAdminUserId = async (userId: string): Promise<boolean> => {
   return isAdminEmail(user?.email);
 };
 
+export const touchLastLogin = async (userId: string): Promise<void> => {
+  try {
+    await pool.query(`UPDATE users SET last_login_at = now() WHERE id = $1`, [
+      userId,
+    ]);
+  } catch (err) {
+    console.warn('최근 로그인 시각 저장 실패:', err);
+  }
+};
+
+export interface AdminMemberRow {
+  id: string;
+  email: string;
+  name: string;
+  isAdmin: boolean;
+  createdAt: string;
+  lastLoginAt: string | null;
+}
+
+export const listMembersForAdmin = async (): Promise<AdminMemberRow[]> => {
+  const { rows } = await pool.query(
+    `SELECT id, email, name, created_at, last_login_at
+     FROM users
+     ORDER BY last_login_at DESC NULLS LAST, created_at DESC`,
+  );
+  return rows.map((row) => {
+    const record = row as Record<string, unknown>;
+    const email = String(record.email);
+    return {
+      id: String(record.id),
+      email,
+      name: String(record.name),
+      isAdmin: isAdminEmail(email),
+      createdAt: asIso(record.created_at),
+      lastLoginAt: record.last_login_at ? asIso(record.last_login_at) : null,
+    };
+  });
+};
+
 // --- Travel Plan ---
 
 export const getAccessiblePlans = async (

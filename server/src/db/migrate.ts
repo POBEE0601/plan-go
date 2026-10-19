@@ -1,3 +1,4 @@
+// 2026-10-06 관리자 화면용 최근 로그인·API 사용량
 // 2026-09-28 여행 지출 테이블
 // 2026-09-22 장소 핀 색·카테고리 정규화
 // 2026-09-04 준비 메모·체크리스트 컬럼/테이블을 기존 DB에도 적용
@@ -97,4 +98,18 @@ export const ensurePlaceMetaSchema = async (): Promise<void> => {
     `ALTER TABLE travel_plans
       ADD COLUMN IF NOT EXISTS custom_categories JSONB NOT NULL DEFAULT '[]'::jsonb`,
   );
+};
+
+export const ensureAdminSchema = async (): Promise<void> => {
+  await pool.query(
+    `ALTER TABLE users ADD COLUMN IF NOT EXISTS last_login_at TIMESTAMPTZ`,
+  );
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS api_usage (
+      period TEXT NOT NULL,
+      kind TEXT NOT NULL,
+      used INTEGER NOT NULL DEFAULT 0,
+      PRIMARY KEY (period, kind)
+    )
+  `);
 };

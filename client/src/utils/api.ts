@@ -23,6 +23,7 @@ import type {
   TravelPlan,
 } from '../types/travel';
 import type { AiChatMessage, AiChatResponse } from '../types/ai';
+import type { AdminOverview } from '../types/admin';
 import type { AuthResponse, LoginData, RegisterData, User } from '../types/user';
 
 const API_BASE = '/api';
@@ -589,6 +590,10 @@ export const travelApi = {
       };
       xhr.send(JSON.stringify(image));
     }),
+};
+
+export const adminApi = {
+  overview: () => request<AdminOverview>('/admin/overview'),
 };
 
 export const aiApi = {

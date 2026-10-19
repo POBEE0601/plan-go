@@ -1,6 +1,7 @@
 // 2026-10-02 Distance Matrix 제거. Directions는 하루 캐시, 실패는 10분
 // 2026-09-01 Directions/Distance Matrix 과금 가드 (재시도·3모드 자동 호출 제거)
 // 콘솔 일일 쿼터: Google Cloud → API 및 서비스 → Directions API → 할당량
+import { recordApiUse } from './apiUsage.js';
 import { DAY_MS, recall, remember } from './mapsCache.js';
 
 const MODE_LABEL: Record<string, string> = {
@@ -118,6 +119,7 @@ const fetchDirectionsOnce = async (
   const res = await fetch(
     `https://maps.googleapis.com/maps/api/directions/json?${params}`,
   );
+  recordApiUse(mode === 'transit' ? 'directions_transit' : 'directions');
   return (await res.json()) as {
     status: string;
     error_message?: string;

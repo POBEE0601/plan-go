@@ -1,5 +1,6 @@
 // 2026-09-23 Gemini는 기존 장소 검색·길찾기만 호출하고, 저장은 하지 않는다
 import type { Place, TravelPlan } from '../types/travel.js';
+import { recordApiUse } from './apiUsage.js';
 import { searchPlaces } from './googlePlaces.js';
 import {
   getRouteDetails,
@@ -317,6 +318,7 @@ const generate = async (
       }),
       signal: AbortSignal.timeout(30_000),
     });
+    recordApiUse('gemini_chat');
     const data = (await res.json()) as GeminiResponse;
     if (!res.ok) {
       const message = data.error?.message ?? `Gemini 요청 실패 (${res.status})`;

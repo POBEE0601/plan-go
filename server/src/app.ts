@@ -3,6 +3,7 @@
 // 2026-08-31 배포게시판 라우트 등록
 import cors from 'cors';
 import express from 'express';
+import adminRouter from './routes/admin.js';
 import aiRouter from './routes/ai.js';
 import authRouter from './routes/auth.js';
 import boardRouter from './routes/board.js';
@@ -45,6 +46,7 @@ app.get('/api/health', (_req, res) => {
   res.json({ status: 'ok', service: 'plan-go-api' });
 });
 
+app.use('/api/admin', adminRouter);
 app.use('/api/ai', aiRouter);
 app.use('/api/auth', authRouter);
 app.use('/api/places', placesRouter);

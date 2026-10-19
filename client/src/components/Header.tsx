@@ -14,6 +14,7 @@ import {
   MessageSquareText,
   PanelLeft,
   Rocket,
+  Shield,
   User,
   UserPlus,
   X,
@@ -95,6 +96,20 @@ export default function Header({
               >
                 <GeminiMark className="h-4 w-4" />
                 Plan AI
+              </Link>
+            )}
+            {isAuthenticated && user?.isAdmin && (
+              <Link
+                to="/admin"
+                className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm hover:bg-slate-50 ${
+                  location.pathname.startsWith('/admin')
+                    ? 'font-medium text-amber-800'
+                    : 'text-slate-600'
+                }`}
+                aria-current={location.pathname.startsWith('/admin') ? 'page' : undefined}
+              >
+                <Shield className="h-4 w-4" />
+                관리
               </Link>
             )}
             <Link
@@ -258,6 +273,16 @@ export default function Header({
                 >
                   <GeminiMark className="h-4 w-4" />
                   Plan AI
+                </Link>
+              )}
+              {isAuthenticated && user?.isAdmin && (
+                <Link
+                  to="/admin"
+                  onClick={closeNav}
+                  className="flex items-center gap-2 rounded-lg px-3 py-3 text-sm text-slate-700 hover:bg-slate-50"
+                >
+                  <Shield className="h-4 w-4" />
+                  관리
                 </Link>
               )}
               <Link

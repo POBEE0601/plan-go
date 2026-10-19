@@ -1,5 +1,6 @@
 // 2026-09-28 영수증 사진을 Gemini로 읽어 지출 입력값만 돌려준다
 import type { ExpenseMethod } from '../types/travel.js';
+import { recordApiUse } from './apiUsage.js';
 
 export interface ReceiptDraft {
   amount: number | null;
@@ -105,6 +106,7 @@ export const readReceipt = async (
     }),
     signal: AbortSignal.timeout(45_000),
   });
+  recordApiUse('gemini_receipt');
   const payload = (await res.json()) as {
     candidates?: { content?: { parts?: { text?: string }[] } }[];
     error?: { message?: string };

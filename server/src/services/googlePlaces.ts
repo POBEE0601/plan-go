@@ -7,6 +7,7 @@ import type {
   PlaceCategory,
   PlaceSearchResult,
 } from '../types/travel.js';
+import { recordApiUse } from './apiUsage.js';
 import { DAY_MS, recall, remember } from './mapsCache.js';
 import { cachedPhotoUrls } from './placePhoto.js';
 
@@ -76,6 +77,7 @@ export const searchPlaces = async (
   const res = await fetch(
     `https://maps.googleapis.com/maps/api/place/textsearch/json?${params}`,
   );
+  recordApiUse('places_text');
   const data = (await res.json()) as {
     status: string;
     results?: GoogleTextSearchResult[];
@@ -185,6 +187,7 @@ const fetchCityDetails = async (
   const res = await fetch(
     `https://maps.googleapis.com/maps/api/place/details/json?${params}`,
   );
+  recordApiUse('places_details');
   const data = (await res.json()) as {
     status: string;
     result?: GooglePlaceDetailsResult;
@@ -233,6 +236,7 @@ export const searchCities = async (
   const res = await fetch(
     `https://maps.googleapis.com/maps/api/place/autocomplete/json?${params}`,
   );
+  recordApiUse('places_autocomplete');
   const data = (await res.json()) as {
     status: string;
     predictions?: {
@@ -379,6 +383,7 @@ const nearbyByType = async (
   const res = await fetch(
     `https://maps.googleapis.com/maps/api/place/nearbysearch/json?${params}`,
   );
+  recordApiUse('places_nearby');
   const data = (await res.json()) as {
     status: string;
     results?: NearbySearchItem[];
@@ -407,6 +412,7 @@ const readPlacePhone = async (
   const res = await fetch(
     `https://maps.googleapis.com/maps/api/place/details/json?${params}`,
   );
+  recordApiUse('places_phone');
   const data = (await res.json()) as {
     status: string;
     result?: {

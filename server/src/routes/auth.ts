@@ -2,6 +2,7 @@ import { Router } from 'express';
 import {
   createUser,
   getUserPublic,
+  touchLastLogin,
   validateUser,
 } from '../db/database.js';
 import { authMiddleware, signToken, type AuthRequest } from '../middleware/auth.js';
@@ -31,6 +32,7 @@ router.post('/register', async (req, res) => {
 
   try {
     const user = await createUser(email, password, name);
+    await touchLastLogin(user.id);
     const token = signToken({ userId: user.id, email: user.email });
     res.status(201).json({ token, user });
   } catch (err) {
@@ -55,6 +57,7 @@ router.post('/login', async (req, res) => {
     return;
   }
 
+  await touchLastLogin(user.id);
   const token = signToken({ userId: user.id, email: user.email });
   res.json({ token, user });
 });
