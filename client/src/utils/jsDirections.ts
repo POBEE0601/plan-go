@@ -1,3 +1,4 @@
+// 2026-10-19 장소 인포: 구글맵 검색 결과 URL
 // 2026-10-02 도로선용 Directions 호출 제거. 구글 지도 바로가기만 유지
 import type { Place } from '../types/travel';
 
@@ -30,4 +31,20 @@ export const mapsDirFromHere = (place: Place): string => {
     params.set('destination_place_id', place.googlePlaceId);
   }
   return `https://www.google.com/maps/dir/?${params.toString()}`;
+};
+
+// 2026-10-19 길찾기와 별도로, 해당 장소의 구글맵 검색(정보) 화면
+export const mapsPlaceSearch = (place: Place): string => {
+  const name = place.name?.trim();
+  const address = place.address?.trim();
+  const query =
+    name && address && !place.googlePlaceId
+      ? `${name} ${address}`
+      : name || address || `${place.lat},${place.lng}`;
+  const params = new URLSearchParams({
+    api: '1',
+    query,
+  });
+  if (place.googlePlaceId) params.set('query_place_id', place.googlePlaceId);
+  return `https://www.google.com/maps/search/?${params.toString()}`;
 };

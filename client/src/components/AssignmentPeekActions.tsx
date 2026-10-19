@@ -1,10 +1,11 @@
+// 2026-10-19 길찾기 옆에 구글맵 장소 검색 인포 버튼
 // 2026-09-23 길찾기·메모 아이콘 버튼 크기 확대
 // 2026-09-22 일정 행: 현위치 길찾기 + 저장된 메모 읽기 전용 팝업
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Navigation, StickyNote, X } from 'lucide-react';
+import { Info, Navigation, StickyNote, X } from 'lucide-react';
 import type { Place } from '../types/travel';
-import { mapsDirFromHere } from '../utils/jsDirections';
+import { mapsDirFromHere, mapsPlaceSearch } from '../utils/jsDirections';
 
 interface MemoPeekModalProps {
   open: boolean;
@@ -97,6 +98,17 @@ export default function AssignmentPeekActions({
         title="현위치에서 길찾기"
       >
         <Navigation className="h-5 w-5" strokeWidth={2.2} />
+      </a>
+      <a
+        href={mapsPlaceSearch(place)}
+        target="_blank"
+        rel="noreferrer"
+        onClick={(e) => e.stopPropagation()}
+        className="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
+        aria-label={`${place.name} 구글맵 검색 결과`}
+        title="구글맵 장소 정보"
+      >
+        <Info className="h-5 w-5" strokeWidth={2.2} />
       </a>
       <button
         type="button"
