@@ -1,10 +1,12 @@
+// 2026-10-21 관리자만 국가·기간 여행 알림을 등록한다
 // 2026-10-06 관리자 전용: API 무료 한도 사용량, 회원·최근 로그인
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 import { Navigate } from 'react-router-dom';
 import { Loader2, RefreshCw, Shield } from 'lucide-react';
 import AppPageShell from '../components/AppPageShell';
 import { useAuthStore } from '../store/useAuthStore';
 import type { AdminOverview, ApiUsageItem } from '../types/admin';
+import type { TravelAlert } from '../types/travel';
 import { adminApi } from '../utils/api';
 
 const formatDate = (iso: string): string =>
@@ -77,6 +79,174 @@ function UsageCard({ item }: { item: ApiUsageItem }) {
       )}
       {item.note && <p className="mt-2 text-xs text-slate-500">{item.note}</p>}
     </article>
+  );
+}
+
+const ALERT_COUNTRIES = [
+  { key: 'japan', label: '일본' },
+  { key: 'korea', label: '한국' },
+  { key: 'usa', label: '미국' },
+  { key: 'china', label: '중국' },
+  { key: 'taiwan', label: '대만' },
+  { key: 'thailand', label: '태국' },
+  { key: 'vietnam', label: '베트남' },
+  { key: 'singapore', label: '싱가포르' },
+  { key: 'france', label: '프랑스' },
+  { key: 'uk', label: '영국' },
+];
+
+function AdminAlerts() {
+  const [alerts, setAlerts] = useState<TravelAlert[]>([]);
+  const [error, setError] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [form, setForm] = useState({
+    countryKey: 'japan',
+    title: '',
+    body: '',
+    source: '',
+    severity: 'important' as 'info' | 'important',
+    startsOn: '',
+    endsOn: '',
+    confirmedOn: new Date().toISOString().slice(0, 10),
+  });
+
+  const load = () => {
+    adminApi
+      .alerts()
+      .then(setAlerts)
+      .catch((err) => {
+        setError(err instanceof Error ? err.message : '알림을 불러오지 못했습니다.');
+      });
+  };
+
+  useEffect(() => {
+    load();
+  }, []);
+
+  const submit = async (e: FormEvent) => {
+    e.preventDefault();
+    setSaving(true);
+    setError('');
+    try {
+      await adminApi.createAlert(form);
+      setForm((current) => ({ ...current, title: '', body: '', source: '', endsOn: '' }));
+      load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '알림을 저장하지 못했습니다.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <section className="mt-8">
+      <h3 className="text-sm font-semibold text-slate-800">여행 알림</h3>
+      <p className="mt-1 text-xs text-slate-500">
+        국가와 여행 날짜가 겹치면 해당 계획에만 표시됩니다. 멤버는 등록할 수 없습니다.
+      </p>
+      <form onSubmit={(e) => void submit(e)} className="mt-3 space-y-2 rounded-xl border border-slate-200 bg-white p-4">
+        <div className="grid gap-2 sm:grid-cols-2">
+          <select
+            value={form.countryKey}
+            onChange={(e) => setForm({ ...form, countryKey: e.target.value })}
+            className="rounded-lg border border-slate-200 px-3 py-2 text-sm"
+          >
+            {ALERT_COUNTRIES.map((row) => (
+              <option key={row.key} value={row.key}>
+                {row.label}
+              </option>
+            ))}
+          </select>
+          <select
+            value={form.severity}
+            onChange={(e) =>
+              setForm({ ...form, severity: e.target.value === 'info' ? 'info' : 'important' })
+            }
+            className="rounded-lg border border-slate-200 px-3 py-2 text-sm"
+          >
+            <option value="important">중요</option>
+            <option value="info">참고</option>
+          </select>
+          <input
+            value={form.title}
+            onChange={(e) => setForm({ ...form, title: e.target.value })}
+            placeholder="제목"
+            maxLength={80}
+            className="rounded-lg border border-slate-200 px-3 py-2 text-sm sm:col-span-2"
+          />
+          <textarea
+            value={form.body}
+            onChange={(e) => setForm({ ...form, body: e.target.value })}
+            placeholder="내용"
+            maxLength={1000}
+            rows={3}
+            className="rounded-lg border border-slate-200 px-3 py-2 text-sm sm:col-span-2"
+          />
+          <input
+            value={form.source}
+            onChange={(e) => setForm({ ...form, source: e.target.value })}
+            placeholder="출처"
+            maxLength={200}
+            className="rounded-lg border border-slate-200 px-3 py-2 text-sm sm:col-span-2"
+          />
+          <input
+            type="date"
+            value={form.startsOn}
+            onChange={(e) => setForm({ ...form, startsOn: e.target.value })}
+            className="rounded-lg border border-slate-200 px-3 py-2 text-sm"
+            aria-label="시작일"
+          />
+          <input
+            type="date"
+            value={form.endsOn}
+            onChange={(e) => setForm({ ...form, endsOn: e.target.value })}
+            className="rounded-lg border border-slate-200 px-3 py-2 text-sm"
+            aria-label="종료일"
+          />
+          <input
+            type="date"
+            value={form.confirmedOn}
+            onChange={(e) => setForm({ ...form, confirmedOn: e.target.value })}
+            className="rounded-lg border border-slate-200 px-3 py-2 text-sm"
+            aria-label="확인일"
+          />
+        </div>
+        <button
+          type="submit"
+          disabled={saving}
+          className="rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white disabled:opacity-40"
+        >
+          {saving ? '저장 중…' : '알림 등록'}
+        </button>
+        {error && <p className="text-xs text-red-600">{error}</p>}
+      </form>
+      <ul className="mt-3 space-y-2">
+        {alerts.map((alert) => (
+          <li key={alert.id} className="rounded-xl border border-slate-200 bg-white px-4 py-3">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-sm font-medium text-slate-800">
+                  {alert.countryLabel} · {alert.title}
+                </p>
+                <p className="mt-1 text-xs text-slate-500">
+                  {alert.startsOn}
+                  {alert.endsOn ? ` ~ ${alert.endsOn}` : ' ~'} · 확인 {alert.confirmedOn}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  void adminApi.deleteAlert(alert.id).then(load);
+                }}
+                className="text-xs text-red-600"
+              >
+                삭제
+              </button>
+            </div>
+          </li>
+        ))}
+      </ul>
+    </section>
   );
 }
 
@@ -230,6 +400,7 @@ function AdminBody() {
           </section>
         </>
       )}
+      <AdminAlerts />
     </div>
   );
 }

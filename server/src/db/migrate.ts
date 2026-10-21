@@ -1,3 +1,4 @@
+// 2026-10-21 여행 인원·국가 알림 테이블
 // 2026-10-06 관리자 화면용 최근 로그인·API 사용량
 // 2026-09-28 여행 지출 테이블
 // 2026-09-22 장소 핀 색·카테고리 정규화
@@ -97,6 +98,53 @@ export const ensurePlaceMetaSchema = async (): Promise<void> => {
   await pool.query(
     `ALTER TABLE travel_plans
       ADD COLUMN IF NOT EXISTS custom_categories JSONB NOT NULL DEFAULT '[]'::jsonb`,
+  );
+};
+
+export const ensureTripExtrasSchema = async (): Promise<void> => {
+  await pool.query(`
+    ALTER TABLE travel_plans
+      ADD COLUMN IF NOT EXISTS adults INTEGER NOT NULL DEFAULT 1,
+      ADD COLUMN IF NOT EXISTS children INTEGER NOT NULL DEFAULT 0,
+      ADD COLUMN IF NOT EXISTS infants INTEGER NOT NULL DEFAULT 0,
+      ADD COLUMN IF NOT EXISTS pregnant BOOLEAN NOT NULL DEFAULT false
+  `);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS travel_alerts (
+      id TEXT PRIMARY KEY,
+      country_key TEXT NOT NULL,
+      title TEXT NOT NULL,
+      body TEXT NOT NULL,
+      source TEXT NOT NULL DEFAULT '',
+      severity TEXT NOT NULL DEFAULT 'important',
+      starts_on TEXT NOT NULL,
+      ends_on TEXT,
+      confirmed_on TEXT NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    )
+  `);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS travel_alert_dismissals (
+      alert_id TEXT NOT NULL REFERENCES travel_alerts(id) ON DELETE CASCADE,
+      user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      PRIMARY KEY (alert_id, user_id)
+    )
+  `);
+  await pool.query(
+    `INSERT INTO travel_alerts
+      (id, country_key, title, body, source, severity, starts_on, ends_on, confirmed_on)
+     VALUES (
+       'alert-jp-taxfree-202611',
+       'japan',
+       '일본 면세는 출국일 공항에서만',
+       '2026년 11월 1일부터 일본 면세 절차는 출국하는 날, 공항에서만 진행됩니다. 공항이 붐빌 수 있고, 면세 줄 때문에 비행기를 놓쳐도 항공사가 보상하지 않을 수 있습니다. 출국 시간을 넉넉히 잡으세요.',
+       '일본 면세 절차 변경 (2026-11-01)',
+       'important',
+       '2026-11-01',
+       NULL,
+       '2026-10-21'
+     )
+     ON CONFLICT (id) DO NOTHING`,
   );
 };
 

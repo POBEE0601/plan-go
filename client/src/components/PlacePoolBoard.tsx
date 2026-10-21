@@ -1,3 +1,4 @@
+// 2026-10-21 PC 일정 목록은 오른쪽 경계를 끌어 너비를 조절한다
 // 2026-10-21 같은 장소가 하루에 두 번이면 누른 순서의 배정을 고른다
 // 2026-09-28 모바일 여행 홈: 시트를 내리면 카드, 올리면 시간순 목록
 // 2026-09-23 여행홈 시트 최소 높이는 가로 카드까지
@@ -27,7 +28,7 @@ import {
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import {
   GripVertical,
   List,
@@ -38,6 +39,29 @@ import {
   Trash2,
   X,
 } from 'lucide-react';
+
+const PIN_LIST_WIDTH_KEY = 'plan-go-pin-list-width';
+const PIN_LIST_MIN = 220;
+const PIN_LIST_MAX = 640;
+
+const readPinListWidth = (): number => {
+  try {
+    const raw = localStorage.getItem(PIN_LIST_WIDTH_KEY);
+    if (!raw) return 280;
+    const width = Number(raw);
+    if (!Number.isFinite(width)) return 280;
+    return Math.min(PIN_LIST_MAX, Math.max(PIN_LIST_MIN, Math.round(width)));
+  } catch {
+    return 280;
+  }
+};
+
+const clampPinListWidth = (width: number, parentWidth?: number): number => {
+  const max = parentWidth
+    ? Math.max(PIN_LIST_MIN, Math.min(PIN_LIST_MAX, parentWidth - 360))
+    : PIN_LIST_MAX;
+  return Math.min(max, Math.max(PIN_LIST_MIN, Math.round(width)));
+};
 import { useTravelStore } from '../store/useTravelStore';
 import {
   armDragGesture,
@@ -595,6 +619,51 @@ export default function PlacePoolBoard({
   const [isDesktop, setIsDesktop] = useState(
     () => window.matchMedia('(min-width: 1024px)').matches,
   );
+  const pinRowRef = useRef<HTMLDivElement>(null);
+  const [pinListWidth, setPinListWidth] = useState(readPinListWidth);
+  const pinListWidthRef = useRef(pinListWidth);
+  pinListWidthRef.current = pinListWidth;
+
+  const startPinListResize = (event: ReactPointerEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    const handle = event.currentTarget;
+    const startX = event.clientX;
+    const startW = pinListWidthRef.current;
+    const parentWidth = pinRowRef.current?.clientWidth;
+    try {
+      handle.setPointerCapture(event.pointerId);
+    } catch {
+      // 포인터가 없으면 이동 이벤트만 받는다
+    }
+    const previousCursor = document.body.style.cursor;
+    const previousSelect = document.body.style.userSelect;
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+    const move = (ev: PointerEvent) => {
+      const next = clampPinListWidth(startW + ev.clientX - startX, parentWidth);
+      pinListWidthRef.current = next;
+      setPinListWidth(next);
+    };
+    const end = (ev: PointerEvent) => {
+      handle.removeEventListener('pointermove', move);
+      handle.removeEventListener('pointerup', end);
+      handle.removeEventListener('pointercancel', end);
+      if (handle.hasPointerCapture(ev.pointerId)) {
+        handle.releasePointerCapture(ev.pointerId);
+      }
+      document.body.style.cursor = previousCursor;
+      document.body.style.userSelect = previousSelect;
+      try {
+        localStorage.setItem(PIN_LIST_WIDTH_KEY, String(pinListWidthRef.current));
+      } catch {
+        // 너비 저장 실패는 다음 드래그에 맡긴다
+      }
+    };
+    handle.addEventListener('pointermove', move);
+    handle.addEventListener('pointerup', end);
+    handle.addEventListener('pointercancel', end);
+  };
 
   useEffect(() => {
     const mq = window.matchMedia('(min-width: 1024px)');
@@ -946,9 +1015,12 @@ export default function PlacePoolBoard({
       <div className="flex h-full min-h-0 flex-col overflow-hidden">
         <DayTabs canWrite={canWrite} />
 
-        <div className="relative flex min-h-0 flex-1 overflow-hidden">
+        <div ref={pinRowRef} className="relative flex min-h-0 flex-1 overflow-hidden">
           {isDesktop && (
-            <aside className="relative flex w-[280px] shrink-0 flex-col border-r border-slate-200 bg-white">
+            <aside
+              className="relative flex shrink-0 flex-col border-r border-slate-200 bg-white"
+              style={{ width: pinListWidth }}
+            >
               <TimelineChrome canWrite={canWrite} />
               <CompactTimeline
                 dayIndex={activeDay}
@@ -957,6 +1029,17 @@ export default function PlacePoolBoard({
                 canWrite={canWrite}
               />
               {poolOpen && <PoolPanel canWrite={canWrite} />}
+              <div
+                role="separator"
+                aria-orientation="vertical"
+                aria-label="일정 목록 너비"
+                aria-valuemin={PIN_LIST_MIN}
+                aria-valuemax={PIN_LIST_MAX}
+                aria-valuenow={pinListWidth}
+                onPointerDown={startPinListResize}
+                tabIndex={0}
+                className="absolute inset-y-0 right-0 z-20 w-2 cursor-col-resize touch-none hover:bg-primary-400/50"
+              />
             </aside>
           )}
 

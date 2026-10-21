@@ -1,3 +1,5 @@
+// 2026-10-21 여행 알림은 왼쪽 비상 아이콘 옆에서만 연다
+// 2026-10-21 일정 붙여넣기·여행 알림. 인원은 준비 화면에만
 // 2026-10-21 PC에서도 여행 홈·저장을 고른다. 지출은 모바일만
 // 2026-10-21 계획을 열면 오늘 일차를 고르고, 날짜가 바뀌면 그 일차로 옮긴다
 // 2026-09-28 저장 가져오기는 고른 카테고리로만 미배정에 넣는다
@@ -21,6 +23,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
   AlertCircle,
+  ClipboardPaste,
   Compass,
   Heart,
   LayoutList,
@@ -41,6 +44,8 @@ import ClassicPlacePoolBoard from '../components/ClassicPlacePoolBoard';
 import InviteModal from '../components/InviteModal';
 import PrepBoardModal from '../components/PrepBoardModal';
 import EmergencyModal from '../components/EmergencyModal';
+import PlanAlertBanner from '../components/PlanAlertBanner';
+import ItineraryImportModal from '../components/ItineraryImportModal';
 import MobileTabBar from '../components/MobileTabBar';
 import BootSplash from '../components/BootSplash';
 import FirstVisitTour from '../components/FirstVisitTour';
@@ -55,6 +60,7 @@ import { useTravelStore } from '../store/useTravelStore';
 import { usePlanUiStore } from '../store/usePlanUiStore';
 import ExchangeRateBadge from '../components/ExchangeRateBadge';
 import { travelApi } from '../utils/api';
+import type { TravelAlert } from '../types/travel';
 import { categoryLabel, categoryMeta } from '../utils/days';
 import { parseTakeoutPlaces, type TakeoutPlace } from '../utils/takeoutPlaces';
 
@@ -157,6 +163,13 @@ export default function DashboardPage() {
   const importFileRef = useRef<HTMLInputElement>(null);
   const [importing, setImporting] = useState(false);
   const [importNote, setImportNote] = useState('');
+  const [importOpen, setImportOpen] = useState(false);
+  const [alerts, setAlerts] = useState<TravelAlert[]>([]);
+  const [alertBox, setAlertBox] = useState<{
+    top: number;
+    left: number;
+    width: number;
+  } | null>(null);
   const [isDesktop, setIsDesktop] = useState(
     () => window.matchMedia('(min-width: 1024px)').matches,
   );
@@ -185,6 +198,34 @@ export default function DashboardPage() {
       document.removeEventListener('visibilitychange', pull);
     };
   }, [selectedPlanId, syncSelectedPlan]);
+
+  useEffect(() => {
+    if (!selectedPlan) {
+      setAlerts([]);
+      return;
+    }
+    let cancelled = false;
+    travelApi
+      .planAlerts(selectedPlan.id)
+      .then((rows) => {
+        if (!cancelled) setAlerts(rows);
+      })
+      .catch(() => {
+        if (!cancelled) setAlerts([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    selectedPlan?.id,
+    selectedPlan?.startDate,
+    selectedPlan?.endDate,
+    selectedPlan?.regionName,
+  ]);
+
+  useEffect(() => {
+    setAlertBox(null);
+  }, [selectedPlan?.id]);
 
   useEffect(() => {
     const mq = window.matchMedia('(min-width: 1024px)');
@@ -365,11 +406,23 @@ export default function DashboardPage() {
         }
         titleExtra={
           selectedPlan && mobileTab === 'home' ? (
-            <PlanQuickActions
-              compact
-              onPrep={() => setPrepOpen(true)}
-              onEmergency={() => setEmergencyOpen(true)}
-            />
+            <div className="flex items-center gap-1">
+              {canWrite && (
+                <button
+                  type="button"
+                  onClick={() => setImportOpen(true)}
+                  className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-700"
+                  aria-label="일정 가져오기"
+                >
+                  <ClipboardPaste className="h-4 w-4" />
+                </button>
+              )}
+              <PlanQuickActions
+                compact
+                onPrep={() => setPrepOpen(true)}
+                onEmergency={() => setEmergencyOpen(true)}
+              />
+            </div>
           ) : selectedPlan && mobileTab === 'saved' && canWrite ? (
             <button
               type="button"
@@ -411,7 +464,24 @@ export default function DashboardPage() {
             onClick={() => setPlansOpen(false)}
           />
         )}
-        <SidePanel open={plansOpen} onClose={() => setPlansOpen(false)} />
+        <SidePanel
+          open={plansOpen}
+          onClose={() => setPlansOpen(false)}
+          alerts={alerts}
+          alertOpen={alertBox != null}
+          onToggleAlert={(anchor) => {
+            setAlertBox((current) => {
+              if (current) return null;
+              const width = Math.min(320, window.innerWidth - 16);
+              let left = anchor.right + 8;
+              if (left + width > window.innerWidth - 8) {
+                left = Math.max(8, window.innerWidth - width - 8);
+              }
+              const top = Math.max(8, Math.min(anchor.top, window.innerHeight - 220));
+              return { top, left, width };
+            });
+          }}
+        />
 
         <main className="flex min-w-0 flex-1 flex-col overflow-hidden bg-white">
           {isLoading ? (
@@ -491,6 +561,16 @@ export default function DashboardPage() {
                     onPrep={() => setPrepOpen(true)}
                     onEmergency={() => setEmergencyOpen(true)}
                   />
+                  {canWrite && !desktopSaved && (
+                    <button
+                      type="button"
+                      onClick={() => setImportOpen(true)}
+                      className="flex h-9 items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
+                    >
+                      <ClipboardPaste className="h-3.5 w-3.5" />
+                      일정 가져오기
+                    </button>
+                  )}
                   {desktopSaved ? (
                     <>
                       <button
@@ -682,11 +762,49 @@ export default function DashboardPage() {
       )}
 
       <InviteModal open={inviteOpen} onClose={() => setInviteOpen(false)} />
+      {alertBox && alerts.length > 0 && (
+        <>
+          <button
+            type="button"
+            className="fixed inset-0 z-[70]"
+            aria-label="알림 닫기"
+            onClick={() => setAlertBox(null)}
+          />
+          <div
+            className="fixed z-[80] max-h-[min(70vh,420px)] overflow-y-auto rounded-xl border border-amber-200 bg-white p-2 shadow-xl"
+            style={{ top: alertBox.top, left: alertBox.left, width: alertBox.width }}
+          >
+            <PlanAlertBanner
+              alerts={alerts}
+              onDismiss={(alertId) => {
+                const remaining = alerts.filter((row) => row.id !== alertId);
+                setAlerts(remaining);
+                if (remaining.length === 0) setAlertBox(null);
+                if (!selectedPlan) return;
+                void travelApi.dismissAlert(selectedPlan.id, alertId).catch(() => {
+                  void travelApi.planAlerts(selectedPlan.id).then(setAlerts).catch(() => {});
+                });
+              }}
+            />
+          </div>
+        </>
+      )}
       <PrepBoardModal
         open={prepOpen}
         canWrite={canWrite}
         onClose={() => setPrepOpen(false)}
       />
+      {selectedPlan && (
+        <ItineraryImportModal
+          open={importOpen}
+          plan={selectedPlan}
+          onClose={() => setImportOpen(false)}
+          onApplied={(note) => {
+            setImportNote(note);
+            void refreshSelectedPlan();
+          }}
+        />
+      )}
       <EmergencyModal
         open={emergencyOpen}
         onClose={() => setEmergencyOpen(false)}

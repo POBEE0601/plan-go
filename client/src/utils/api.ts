@@ -21,6 +21,10 @@ import type {
   CitySearchResult,
   CitySuggestion,
   TravelPlan,
+  TravelAlert,
+  ItineraryParseResult,
+  ItineraryApplyResult,
+  PlanPartyInput,
 } from '../types/travel';
 import type { AiChatMessage, AiChatResponse } from '../types/ai';
 import type { AdminOverview } from '../types/admin';
@@ -327,10 +331,49 @@ export const travelApi = {
     regionName: string;
     regionLat: number;
     regionLng: number;
+    adults: number;
+    children: number;
+    infants: number;
+    pregnant: boolean;
   }) =>
     request<TravelPlan>('/travel-plans', {
       method: 'POST',
       body: JSON.stringify(data),
+    }),
+
+  updateParty: (planId: string, data: PlanPartyInput) =>
+    request<TravelPlan>(`/travel-plans/${planId}/party`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    }),
+
+  planAlerts: (planId: string) =>
+    request<TravelAlert[]>(`/travel-plans/${planId}/alerts`),
+
+  dismissAlert: (planId: string, alertId: string) =>
+    request<void>(`/travel-plans/${planId}/alerts/${alertId}/dismiss`, {
+      method: 'POST',
+    }),
+
+  parseItinerary: (planId: string, text: string) =>
+    request<ItineraryParseResult>(`/travel-plans/${planId}/itinerary/parse`, {
+      method: 'POST',
+      body: JSON.stringify({ text }),
+    }),
+
+  applyItinerary: (
+    planId: string,
+    items: {
+      dayIndex: number;
+      time: string;
+      name: string;
+      memo: string;
+      googlePlaceId?: string;
+    }[],
+  ) =>
+    request<ItineraryApplyResult>(`/travel-plans/${planId}/itinerary/apply`, {
+      method: 'POST',
+      body: JSON.stringify({ items }),
     }),
 
   deletePlan: (id: string) =>
@@ -594,6 +637,23 @@ export const travelApi = {
 
 export const adminApi = {
   overview: () => request<AdminOverview>('/admin/overview'),
+  alerts: () => request<TravelAlert[]>('/admin/alerts'),
+  createAlert: (data: {
+    countryKey: string;
+    title: string;
+    body: string;
+    source: string;
+    severity: 'info' | 'important';
+    startsOn: string;
+    endsOn: string;
+    confirmedOn: string;
+  }) =>
+    request<TravelAlert>('/admin/alerts', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+  deleteAlert: (id: string) =>
+    request<void>(`/admin/alerts/${id}`, { method: 'DELETE' }),
 };
 
 export const aiApi = {

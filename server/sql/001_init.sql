@@ -21,7 +21,11 @@ CREATE TABLE IF NOT EXISTS travel_plans (
   region_lng DOUBLE PRECISION,
   prep_memo TEXT NOT NULL DEFAULT '',
   prep_seeded BOOLEAN NOT NULL DEFAULT false,
-  custom_categories JSONB NOT NULL DEFAULT '[]'::jsonb
+  custom_categories JSONB NOT NULL DEFAULT '[]'::jsonb,
+  adults INTEGER NOT NULL DEFAULT 1,
+  children INTEGER NOT NULL DEFAULT 0,
+  infants INTEGER NOT NULL DEFAULT 0,
+  pregnant BOOLEAN NOT NULL DEFAULT false
 );
 
 CREATE TABLE IF NOT EXISTS places (
@@ -130,6 +134,25 @@ CREATE INDEX IF NOT EXISTS idx_plan_members_plan ON plan_members(plan_id);
 CREATE INDEX IF NOT EXISTS idx_plan_members_token ON plan_members(invite_token);
 CREATE INDEX IF NOT EXISTS idx_board_comments_post ON board_comments(post_id);
 CREATE INDEX IF NOT EXISTS idx_board_likes_post ON board_likes(post_id);
+
+CREATE TABLE IF NOT EXISTS travel_alerts (
+  id TEXT PRIMARY KEY,
+  country_key TEXT NOT NULL,
+  title TEXT NOT NULL,
+  body TEXT NOT NULL,
+  source TEXT NOT NULL DEFAULT '',
+  severity TEXT NOT NULL DEFAULT 'important',
+  starts_on TEXT NOT NULL,
+  ends_on TEXT,
+  confirmed_on TEXT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS travel_alert_dismissals (
+  alert_id TEXT NOT NULL REFERENCES travel_alerts(id) ON DELETE CASCADE,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  PRIMARY KEY (alert_id, user_id)
+);
 
 CREATE TABLE IF NOT EXISTS api_usage (
   period TEXT NOT NULL,

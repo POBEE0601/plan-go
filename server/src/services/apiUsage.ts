@@ -10,7 +10,8 @@ export type ApiKind =
   | 'directions'
   | 'directions_transit'
   | 'gemini_chat'
-  | 'gemini_receipt';
+  | 'gemini_receipt'
+  | 'gemini_itinerary';
 
 export interface UsageItem {
   kind: string;
@@ -96,6 +97,13 @@ const CATALOG: CatalogItem[] = [
     limit: null,
     daily: true,
   },
+  {
+    kind: 'gemini_itinerary',
+    label: 'Gemini 일정 읽기',
+    detail: 'generateContent',
+    limit: null,
+    daily: true,
+  },
 ];
 
 export const seoulPeriod = (part: 'month' | 'day'): string => {
@@ -120,7 +128,7 @@ const bump = async (periods: string[], kind: ApiKind): Promise<void> => {
 
 export const recordApiUse = (kind: ApiKind): void => {
   const periods = [seoulPeriod('month')];
-  if (kind === 'gemini_chat' || kind === 'gemini_receipt') {
+  if (kind === 'gemini_chat' || kind === 'gemini_receipt' || kind === 'gemini_itinerary') {
     periods.push(seoulPeriod('day'));
   }
   void bump(periods, kind).catch((err) => {

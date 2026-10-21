@@ -33,10 +33,15 @@ import {
   addExpense,
   deleteExpense,
   canWrite,
+  updatePlanParty,
 } from '../db/database.js';
 import { authMiddleware, type AuthRequest } from '../middleware/auth.js';
 import { rateLimit } from '../middleware/rateLimit.js';
 import { readReceipt } from '../services/receiptScan.js';
+import { readItinerary } from '../services/itineraryImport.js';
+import { applyItineraryRows } from '../services/itineraryApply.js';
+import { countryKeyFromRegion } from '../data/alertCountries.js';
+import { dismissTravelAlert, listMatchingAlerts } from '../db/alerts.js';
 import type {
   AssignDayBody,
   CreateExpenseBody,
@@ -54,7 +59,7 @@ const param = (value: string | string[]): string =>
 const handleError = (res: import('express').Response, err: unknown) => {
   const message =
     err instanceof Error ? err.message : '요청 처리 중 오류가 발생했습니다.';
-  const status = /찾을 수 없|권한|이미|입력/.test(message) ? 400 : 500;
+  const status = /찾을 수 없|권한|이미|입력|읽을|4000자|30줄|넣을 일정/.test(message) ? 400 : 500;
   res.status(status).json({ message });
 };
 
@@ -125,7 +130,7 @@ router.get('/:id', async (req: AuthRequest, res) => {
 });
 
 router.post('/', async (req: AuthRequest, res) => {
-  const { title, startDate, endDate, regionName, regionLat, regionLng } =
+  const { title, startDate, endDate, regionName, regionLat, regionLng, adults, children, infants, pregnant } =
     req.body as CreateTravelPlanBody;
   if (!title?.trim() || !startDate || !endDate) {
     res.status(400).json({ message: '제목, 시작일, 종료일은 필수입니다.' });
@@ -145,6 +150,7 @@ router.post('/', async (req: AuthRequest, res) => {
       regionLat: Number(regionLat),
       regionLng: Number(regionLng),
     },
+    { adults, children, infants, pregnant },
   );
   res.status(201).json(plan);
 });
@@ -615,5 +621,104 @@ router.delete('/:planId/expenses/:expenseId', async (req: AuthRequest, res) => {
     handleError(res, err);
   }
 });
+
+router.patch('/:id/party', async (req: AuthRequest, res) => {
+  try {
+    const plan = await updatePlanParty(param(req.params.id), req.userId!, req.body);
+    if (!plan) {
+      res.status(403).json({ message: '인원을 수정할 권한이 없습니다.' });
+      return;
+    }
+    res.json(plan);
+  } catch (err) {
+    handleError(res, err);
+  }
+});
+
+router.get('/:id/alerts', async (req: AuthRequest, res) => {
+  const plan = await getTravelPlanById(param(req.params.id), req.userId!, {
+    hydratePhotos: false,
+  });
+  if (!plan) {
+    res.status(404).json({ message: '여행 계획을 찾을 수 없습니다.' });
+    return;
+  }
+  const countryKey = countryKeyFromRegion(plan.regionName);
+  if (!countryKey) {
+    res.json([]);
+    return;
+  }
+  const alerts = await listMatchingAlerts(
+    countryKey,
+    plan.startDate,
+    plan.endDate,
+    req.userId!,
+  );
+  res.json(alerts);
+});
+
+router.post('/:id/alerts/:alertId/dismiss', async (req: AuthRequest, res) => {
+  const plan = await getTravelPlanById(param(req.params.id), req.userId!, {
+    hydratePhotos: false,
+  });
+  if (!plan) {
+    res.status(404).json({ message: '여행 계획을 찾을 수 없습니다.' });
+    return;
+  }
+  const ok = await dismissTravelAlert(req.userId!, param(req.params.alertId));
+  if (!ok) {
+    res.status(404).json({ message: '알림을 찾을 수 없습니다.' });
+    return;
+  }
+  res.status(204).send();
+});
+
+router.post(
+  '/:id/itinerary/parse',
+  rateLimit(4, 10 * 60_000, 'itinerary-parse'),
+  async (req: AuthRequest, res) => {
+    try {
+      const plan = await getTravelPlanById(param(req.params.id), req.userId!, {
+        hydratePhotos: false,
+      });
+      if (!plan) {
+        res.status(404).json({ message: '여행 계획을 찾을 수 없습니다.' });
+        return;
+      }
+      if (!canWrite(plan, req.userId!)) {
+        res.status(403).json({ message: '일정을 수정할 권한이 없습니다.' });
+        return;
+      }
+      const text = typeof req.body?.text === 'string' ? req.body.text : '';
+      const parsed = await readItinerary(
+        text,
+        plan.startDate,
+        plan.endDate,
+        plan.regionLat,
+        plan.regionLng,
+      );
+      res.json(parsed);
+    } catch (err) {
+      handleError(res, err);
+    }
+  },
+);
+
+router.post(
+  '/:id/itinerary/apply',
+  rateLimit(6, 10 * 60_000, 'itinerary-apply'),
+  async (req: AuthRequest, res) => {
+    try {
+      const result = await applyItineraryRows(
+        param(req.params.id),
+        req.userId!,
+        req.body?.items,
+      );
+      res.json(result);
+    } catch (err) {
+      handleError(res, err);
+    }
+  },
+);
 
 export default router;

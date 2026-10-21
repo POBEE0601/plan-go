@@ -1,3 +1,5 @@
+// 2026-10-21 비상 아이콘 옆에 알림. 눌렀을 때만 내용이 열린다
+// 2026-10-21 새 계획에 인원 수를 받는다
 // 2026-09-23 여행 날짜는 시작일 이후만 고르고 칸 밖으로 넘치지 않게
 // 2026-09-22 모바일 드로어 z-index를 하단 홈바 위로
 // 2026-09-04 초대 멤버 휴지통은 나가기, 삭제는 방장만
@@ -11,6 +13,7 @@
 // 2026-09-04 여행 생성 위치를 국가 > 도시로 제한
 import { useEffect, useState } from 'react';
 import {
+  Bell,
   Calendar,
   ChevronDown,
   ChevronUp,
@@ -26,13 +29,14 @@ import {
 } from 'lucide-react';
 import EmergencyModal from './EmergencyModal';
 import TripDateField from './TripDateField';
+import PartyCountFields from './PartyCountFields';
 import DayAccordion from './DayAccordion';
 import { useTravelStore } from '../store/useTravelStore';
 import { useAuthStore } from '../store/useAuthStore';
 import { usePlanUiStore } from '../store/usePlanUiStore';
 import { placesApi } from '../utils/api';
 import { dayOptionLabel, getDayCount, isLongTrip } from '../utils/days';
-import type { CitySearchResult, CitySuggestion, TravelPlan } from '../types/travel';
+import type { CitySearchResult, CitySuggestion, TravelAlert, TravelPlan } from '../types/travel';
 
 const isPlanOwner = (plan: TravelPlan, userId?: string): boolean => {
   if (!userId) return false;
@@ -55,9 +59,18 @@ const ownsListedPlan = (
 interface SidePanelProps {
   open?: boolean;
   onClose?: () => void;
+  alerts?: TravelAlert[];
+  alertOpen?: boolean;
+  onToggleAlert?: (anchor: DOMRect) => void;
 }
 
-export default function SidePanel({ open = true, onClose }: SidePanelProps) {
+export default function SidePanel({
+  open = true,
+  onClose,
+  alerts = [],
+  alertOpen = false,
+  onToggleAlert,
+}: SidePanelProps) {
   const {
     travelPlans,
     selectedPlan,
@@ -84,6 +97,12 @@ export default function SidePanel({ open = true, onClose }: SidePanelProps) {
   const [searchingRegion, setSearchingRegion] = useState(false);
   const [regionError, setRegionError] = useState('');
   const [emergencyPlan, setEmergencyPlan] = useState<TravelPlan | null>(null);
+  const [party, setParty] = useState({
+    adults: 1,
+    children: 0,
+    infants: 0,
+    pregnant: false,
+  });
 
   // 지역명 입력 후 짧은 디바운스로 자동 검색
   useEffect(() => {
@@ -121,6 +140,7 @@ export default function SidePanel({ open = true, onClose }: SidePanelProps) {
     setRegionResults([]);
     setSelectedRegion(null);
     setRegionError('');
+    setParty({ adults: 1, children: 0, infants: 0, pregnant: false });
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -140,6 +160,10 @@ export default function SidePanel({ open = true, onClose }: SidePanelProps) {
         regionName: selectedRegion.label,
         regionLat: selectedRegion.lat,
         regionLng: selectedRegion.lng,
+        adults: party.adults,
+        children: party.children,
+        infants: party.infants,
+        pregnant: party.pregnant,
       });
       setActiveDay(1);
       resetForm();
@@ -442,6 +466,11 @@ export default function SidePanel({ open = true, onClose }: SidePanelProps) {
               placeholder="종료일"
               disabled={isSubmitting}
             />
+            <PartyCountFields
+              value={party}
+              onChange={setParty}
+              disabled={isSubmitting}
+            />
             <button
               type="submit"
               disabled={isSubmitting}
@@ -504,6 +533,24 @@ export default function SidePanel({ open = true, onClose }: SidePanelProps) {
                     {(plan.dayAssignments ?? []).length}개
                   </p>
                 </button>
+                {selectedPlanId === plan.id && alerts.length > 0 && onToggleAlert && (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onToggleAlert(e.currentTarget.getBoundingClientRect());
+                    }}
+                    className={`relative ml-0.5 shrink-0 rounded-lg p-2 hover:bg-amber-50 ${
+                      alertOpen ? 'bg-amber-50 text-amber-700' : 'text-amber-600'
+                    }`}
+                    aria-label="여행 알림"
+                    aria-expanded={alertOpen}
+                    title="여행 알림"
+                  >
+                    <Bell className="h-4 w-4" />
+                    <span className="absolute right-1.5 top-1.5 h-1.5 w-1.5 rounded-full bg-amber-500" />
+                  </button>
+                )}
                 <button
                   type="button"
                   onClick={() => setEmergencyPlan(plan)}

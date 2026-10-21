@@ -120,6 +120,11 @@ export interface TravelPlan {
   regionLng?: number;
   prepMemo?: string;
   prepItems?: PrepItem[];
+  // 2026-10-21 인원 수만 저장. 이름·생년월일은 없다
+  adults: number;
+  children: number;
+  infants: number;
+  pregnant: boolean;
   // 2026-09-23 여행별 커스텀 카테고리
   customCategories?: CustomCategory[];
   places: Place[];
@@ -135,6 +140,56 @@ export interface CreateTravelPlanBody {
   regionName?: string;
   regionLat?: number;
   regionLng?: number;
+  adults?: number;
+  children?: number;
+  infants?: number;
+  pregnant?: boolean;
+}
+
+export interface TravelAlert {
+  id: string;
+  countryKey: string;
+  countryLabel: string;
+  title: string;
+  body: string;
+  source: string;
+  severity: 'info' | 'important';
+  startsOn: string;
+  endsOn: string | null;
+  confirmedOn: string;
+}
+
+export interface ItineraryDraft {
+  dayIndex: number;
+  time: string;
+  name: string;
+  memo: string;
+}
+
+export interface ItineraryMatch {
+  googlePlaceId: string;
+  name: string;
+  address: string;
+  lat: number;
+  lng: number;
+  category: string;
+}
+
+export interface ItineraryRow extends ItineraryDraft {
+  match: ItineraryMatch | null;
+}
+
+export interface ItineraryApplyRow {
+  dayIndex: number;
+  time: string;
+  name: string;
+  memo: string;
+  googlePlaceId?: string;
+}
+
+export interface ItineraryApplyResult {
+  added: number;
+  missed: string[];
 }
 
 export interface CreatePlaceBody {

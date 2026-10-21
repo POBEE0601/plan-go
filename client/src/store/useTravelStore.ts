@@ -36,6 +36,10 @@ interface TravelStore {
     regionName: string;
     regionLat: number;
     regionLng: number;
+    adults: number;
+    children: number;
+    infants: number;
+    pregnant: boolean;
   }) => Promise<void>;
   deleteTravelPlan: (id: string) => Promise<void>;
   leaveTravelPlan: (id: string) => Promise<void>;
@@ -82,6 +86,12 @@ interface TravelStore {
   removeMember: (memberId: string) => Promise<void>;
 
   updatePrepMemo: (memo: string) => Promise<void>;
+  updatePlanParty: (party: {
+    adults: number;
+    children: number;
+    infants: number;
+    pregnant: boolean;
+  }) => Promise<void>;
   addPrepItem: (label: string) => Promise<PrepItem | void>;
   togglePrepItem: (itemId: string, checked: boolean) => Promise<void>;
   updatePrepItemDetail: (itemId: string, detail: string) => Promise<void>;
@@ -607,6 +617,20 @@ export const useTravelStore = create<TravelStore>((set, get) => ({
         : null,
       travelPlans: state.travelPlans.map((p) =>
         p.id === plan.id ? { ...p, ...patch } : p,
+      ),
+    }));
+  },
+
+  updatePlanParty: async (party) => {
+    const plan = get().selectedPlan;
+    if (!plan || !canWriteRole(get().myRole)) return;
+    const saved = await travelApi.updateParty(plan.id, party);
+    set((state) => ({
+      selectedPlan: state.selectedPlan
+        ? { ...saved, myRole: state.selectedPlan.myRole }
+        : saved,
+      travelPlans: state.travelPlans.map((p) =>
+        p.id === saved.id ? { ...p, ...saved, myRole: p.myRole } : p,
       ),
     }));
   },

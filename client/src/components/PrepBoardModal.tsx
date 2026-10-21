@@ -1,3 +1,4 @@
+// 2026-10-21 인원과 유아·임산부 준비 항목은 이 화면에서만 보여 준다
 // 2026-10-06 체크리스트는 칸을 벗어날 때 저장. 쓰는 중에는 서버 값으로 되돌리지 않는다
 // 2026-09-04 여행 준비 체크리스트·자유 메모
 // 2026-09-04 제목 클릭 시 항목별 상세 펼침. 진행 바는 헤더로 이동
@@ -12,7 +13,8 @@ import {
   X,
 } from 'lucide-react';
 import { useTravelStore } from '../store/useTravelStore';
-import type { PrepItem } from '../types/travel';
+import type { PlanPartyInput, PrepItem } from '../types/travel';
+import PartyCountFields from './PartyCountFields';
 
 interface PrepBoardModalProps {
   open: boolean;
@@ -135,7 +137,7 @@ export default function PrepBoardModal({
   canWrite,
   onClose,
 }: PrepBoardModalProps) {
-  const { selectedPlan, updatePrepMemo, addPrepItem } = useTravelStore();
+  const { selectedPlan, updatePrepMemo, addPrepItem, updatePlanParty } = useTravelStore();
 
   const items = selectedPlan?.prepItems ?? [];
   const doneCount = items.filter((i) => i.checked).length;
@@ -146,6 +148,8 @@ export default function PrepBoardModal({
   const [newLabel, setNewLabel] = useState('');
   const [savingMemo, setSavingMemo] = useState(false);
   const [adding, setAdding] = useState(false);
+  const [savingParty, setSavingParty] = useState(false);
+  const [partyError, setPartyError] = useState('');
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const memoFocused = useRef(false);
   const memoRef = useRef(memo);
@@ -227,6 +231,31 @@ export default function PrepBoardModal({
         </div>
 
         <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3 sm:px-5">
+          <PartyCountFields
+            value={{
+              adults: selectedPlan.adults ?? 1,
+              children: selectedPlan.children ?? 0,
+              infants: selectedPlan.infants ?? 0,
+              pregnant: Boolean(selectedPlan.pregnant),
+            }}
+            disabled={!canWrite || savingParty}
+            onChange={(next: PlanPartyInput) => {
+              setSavingParty(true);
+              setPartyError('');
+              void updatePlanParty(next)
+                .catch((err: unknown) => {
+                  setPartyError(
+                    err instanceof Error ? err.message : '인원을 저장하지 못했습니다.',
+                  );
+                })
+                .finally(() => setSavingParty(false));
+            }}
+          />
+          {partyError && <p className="mt-1 text-[11px] text-red-600">{partyError}</p>}
+          <p className="mb-3 mt-1 text-[11px] text-slate-400">
+            인원은 이 화면에서만 보입니다. 유아나 임산부를 켜면 준비 항목이 더해지고, 끄면 아직 체크하지 않은 항목만 빠집니다.
+            {savingParty ? ' 저장 중…' : ''}
+          </p>
           <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">
             체크리스트
           </p>

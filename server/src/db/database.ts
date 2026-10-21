@@ -32,7 +32,8 @@ import type {
 import type { User, UserPublic } from '../types/user.js';
 import { isAdminEmail } from '../utils/admin.js';
 import { getDayCount } from '../utils/days.js';
-import { PREP_TEMPLATE_LABELS } from '../data/prepTemplates.js';
+import { PARTY_PREP, PREP_TEMPLATE_LABELS } from '../data/prepTemplates.js';
+import { clampParty, type PlanParty } from '../data/party.js';
 import { pool } from './pool.js';
 
 export const generateId = (): string =>
@@ -147,6 +148,10 @@ const mapPlanRow = (
   regionLng: row.region_lng == null ? undefined : Number(row.region_lng),
   prepMemo: row.prep_memo == null ? '' : String(row.prep_memo),
   customCategories: parseCustomCategories(row.custom_categories),
+  adults: Number.isInteger(Number(row.adults)) ? Number(row.adults) : 1,
+  children: Number.isInteger(Number(row.children)) ? Number(row.children) : 0,
+  infants: Number.isInteger(Number(row.infants)) ? Number(row.infants) : 0,
+  pregnant: row.pregnant === true,
 });
 
 const mapPrepItem = (row: Record<string, unknown>): PrepItem => ({
@@ -351,7 +356,9 @@ export const getPlanSyncRevision = async (
         THEN md5(concat_ws(chr(30),
         (SELECT concat_ws(chr(31), p.title, p.start_date::text, p.end_date::text,
                 coalesce(p.region_name, ''), coalesce(p.prep_memo, ''),
-                coalesce(p.custom_categories::text, ''))
+                coalesce(p.custom_categories::text, ''),
+                coalesce(p.adults::text, '1'), coalesce(p.children::text, '0'),
+                coalesce(p.infants::text, '0'), coalesce(p.pregnant::text, 'false'))
          FROM travel_plans p
          WHERE p.id = $1),
         (SELECT coalesce(string_agg(concat_ws(chr(31), id, name, coalesce(address, ''),
@@ -522,6 +529,50 @@ export const getAccessiblePlans = async (
   return assemblePlans(rows as Record<string, unknown>[]);
 };
 
+const syncPartyPrep = async (
+  client: PoolClient,
+  planId: string,
+  party: PlanParty,
+) => {
+  const { rows } = await client.query(
+    `SELECT label, detail FROM plan_prep_items WHERE plan_id = $1`,
+    [planId],
+  );
+  const have = new Set(
+    rows.map((row) => `${String(row.detail)}\u0000${String(row.label)}`),
+  );
+  const orderRes = await client.query(
+    `SELECT COALESCE(MAX(sort_order), 0) AS max_order
+     FROM plan_prep_items WHERE plan_id = $1`,
+    [planId],
+  );
+  let next = Number(orderRes.rows[0]?.max_order ?? 0) + 1;
+  for (const spec of PARTY_PREP) {
+    const on =
+      spec.detail === 'party:infant' ? party.infants > 0 : party.pregnant;
+    if (!on) {
+      await client.query(
+        `DELETE FROM plan_prep_items
+         WHERE plan_id = $1 AND detail = $2 AND checked = false`,
+        [planId, spec.detail],
+      );
+      continue;
+    }
+    for (const label of spec.labels) {
+      const key = `${spec.detail}\u0000${label}`;
+      if (have.has(key)) continue;
+      await client.query(
+        `INSERT INTO plan_prep_items
+          (id, plan_id, label, checked, sort_order, is_template, detail)
+         VALUES ($1, $2, $3, false, $4, true, $5)`,
+        [generateId(), planId, label, next, spec.detail],
+      );
+      have.add(key);
+      next += 1;
+    }
+  }
+};
+
 const insertPrepTemplates = async (client: PoolClient, planId: string) => {
   for (let i = 0; i < PREP_TEMPLATE_LABELS.length; i += 1) {
     await client.query(
@@ -582,17 +633,25 @@ export const createTravelPlan = async (
   startDate: string,
   endDate: string,
   region?: { regionName: string; regionLat: number; regionLng: number },
+  partyRaw?: {
+    adults?: unknown;
+    children?: unknown;
+    infants?: unknown;
+    pregnant?: unknown;
+  },
 ): Promise<TravelPlan> => {
   const user = await findUserById(userId);
   const id = generateId();
   const memberId = generateId();
   const now = new Date().toISOString();
+  const party = clampParty(partyRaw ?? {});
 
   await withTx(async (client) => {
     await client.query(
       `INSERT INTO travel_plans
-        (id, user_id, title, start_date, end_date, region_name, region_lat, region_lng)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+        (id, user_id, title, start_date, end_date, region_name, region_lat, region_lng,
+         adults, children, infants, pregnant)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
       [
         id,
         userId,
@@ -602,6 +661,10 @@ export const createTravelPlan = async (
         region?.regionName ?? null,
         region?.regionLat ?? null,
         region?.regionLng ?? null,
+        party.adults,
+        party.children,
+        party.infants,
+        party.pregnant,
       ],
     );
     await client.query(
@@ -611,11 +674,37 @@ export const createTravelPlan = async (
       [memberId, id, userId, user?.email ?? '', user?.name ?? 'Owner', now],
     );
     await insertPrepTemplates(client, id);
+    await syncPartyPrep(client, id, party);
   });
 
   const plan = await loadPlan(id);
   if (!plan) throw new Error('여행 계획 생성에 실패했습니다.');
   return plan;
+};
+
+export const updatePlanParty = async (
+  planId: string,
+  userId: string,
+  partyRaw: {
+    adults?: unknown;
+    children?: unknown;
+    infants?: unknown;
+    pregnant?: unknown;
+  },
+): Promise<TravelPlan | null> => {
+  const plan = await requireWritablePlan(planId, userId);
+  if (!plan) return null;
+  const party = clampParty(partyRaw);
+  await withTx(async (client) => {
+    await client.query(
+      `UPDATE travel_plans
+       SET adults = $1, children = $2, infants = $3, pregnant = $4
+       WHERE id = $5`,
+      [party.adults, party.children, party.infants, party.pregnant, planId],
+    );
+    await syncPartyPrep(client, planId, party);
+  });
+  return loadPlan(planId);
 };
 
 export const deleteTravelPlan = async (
