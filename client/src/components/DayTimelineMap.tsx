@@ -1,3 +1,4 @@
+// 2026-10-21 같은 장소 핀은 겹치지 않게 벌리고, 누른 순서의 배정을 고른다
 // 2026-10-02 장소 사이는 직선만. Directions API는 호출하지 않는다
 // 2026-09-28 저장 지도는 경로선·번호 없이 핀만
 // 2026-09-23 기본 확대 버튼 대신 테마에 맞는 작은 버튼
@@ -23,7 +24,12 @@ import { useMapUiStore } from '../store/useMapUiStore';
 import { useTravelStore } from '../store/useTravelStore';
 import { useThemeStore } from '../store/useThemeStore';
 import { DARK_MAP_STYLES } from '../utils/mapTheme';
-import { categoryPinIcon, numberedPinIcon, pinColorOf } from '../utils/mapPin';
+import {
+  categoryPinIcon,
+  numberedPinIcon,
+  pinColorOf,
+  spreadPinPosition,
+} from '../utils/mapPin';
 import MapZoomButtons from './MapZoomButtons';
 import { categoryBadge } from '../utils/days';
 import type { Place, PlaceSearchResult } from '../types/travel';
@@ -31,7 +37,7 @@ import type { Place, PlaceSearchResult } from '../types/travel';
 interface DayTimelineMapProps {
   places: Place[];
   focusPlaceId?: string | null;
-  onSelectPlace?: (placeId: string) => void;
+  onSelectPlace?: (placeId: string, index?: number) => void;
   showHeader?: boolean;
   // 시트·검색바 토글처럼 컨테이너 크기가 바뀔 때 리사이즈 트리거
   layoutKey?: string;
@@ -164,7 +170,7 @@ export default function DayTimelineMap({
   const mapRef = useRef<google.maps.Map | null>(null);
   const [mapReady, setMapReady] = useState(false);
   const [paths, setPaths] = useState<google.maps.LatLngLiteral[][]>([]);
-  const [infoPlaceId, setInfoPlaceId] = useState<string | null>(null);
+  const [infoIndex, setInfoIndex] = useState<number | null>(null);
   const padTop = overlayPadding?.top ?? DEFAULT_PAD.top;
   const padRight = overlayPadding?.right ?? DEFAULT_PAD.right;
   const padBottom = overlayPadding?.bottom ?? DEFAULT_PAD.bottom;
@@ -349,7 +355,9 @@ export default function DayTimelineMap({
     setMapCenter(result.lat, result.lng, 15);
   };
 
-  const infoPlace = places.find((p) => p.id === infoPlaceId) ?? null;
+  const infoPlace = infoIndex != null ? (places[infoIndex] ?? null) : null;
+  const infoPosition =
+    infoIndex != null ? spreadPinPosition(places, infoIndex) : null;
 
   const mapBody = (
     <div className="relative h-full min-h-0 w-full overflow-hidden bg-slate-100">
@@ -401,7 +409,7 @@ export default function DayTimelineMap({
           {places.map((place, i) => (
             <Marker
               key={`${place.id}-${i}-${place.pinColor ?? ''}-${place.category}`}
-              position={{ lat: place.lat, lng: place.lng }}
+              position={spreadPinPosition(places, i)}
               title={`${place.name} · ${categoryBadge(place.category)}`}
               zIndex={focusPlaceId === place.id ? 200 : 100 + i}
               icon={
@@ -410,14 +418,14 @@ export default function DayTimelineMap({
                   : categoryPinIcon(place)
               }
               onClick={() => {
-                if (showPinInfo) setInfoPlaceId(place.id);
-                onSelectPlace?.(place.id);
+                if (showPinInfo) setInfoIndex(i);
+                onSelectPlace?.(place.id, i);
               }}
             />
           ))}
-          {infoPlace && (
+          {infoPlace && infoPosition && (
             <OverlayView
-              position={{ lat: infoPlace.lat, lng: infoPlace.lng }}
+              position={infoPosition}
               mapPaneName={OverlayView.FLOAT_PANE}
               getPixelPositionOffset={(width, height) => ({
                 x: -(width / 2),
@@ -438,7 +446,7 @@ export default function DayTimelineMap({
                   </p>
                   <button
                     type="button"
-                    onClick={() => setInfoPlaceId(null)}
+                    onClick={() => setInfoIndex(null)}
                     className={`-mr-1 -mt-1 rounded-md p-1 ${
                       theme === 'dark'
                         ? 'text-slate-400 hover:bg-slate-800'

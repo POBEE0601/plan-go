@@ -1,3 +1,4 @@
+// 2026-10-21 여행 시작 전은 1일차, 기간 중에는 오늘 일차를 고른다
 // 2026-09-23 커스텀 카테고리 조회·라벨/핀 색 연결
 // 2026-09-22 카테고리: 관광지·카페·맛집·디저트&포장·쇼핑 + 핀 색
 // 2026-09-04 장기간 여행 일차 윈도우·주차 헬퍼
@@ -25,6 +26,29 @@ export const getDateForDay = (startDate: string, dayIndex: number): string => {
   const m = String(start.getMonth() + 1).padStart(2, '0');
   const d = String(start.getDate()).padStart(2, '0');
   return `${y}-${m}-${d}`;
+};
+
+// 로컬 달력 기준 YYYY-MM-DD
+export const localDateStamp = (date = new Date()): string => {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+};
+
+// 시작 전·당일은 1일차, 여행 중에는 오늘, 끝난 뒤에는 마지막 일차
+export const currentTripDay = (
+  startDate: string,
+  endDate: string,
+  today = localDateStamp(),
+): number => {
+  const count = getDayCount(startDate, endDate);
+  if (!startDate || today <= startDate) return 1;
+  if (today > endDate) return count;
+  const start = new Date(`${startDate}T00:00:00`);
+  const now = new Date(`${today}T00:00:00`);
+  const diff = Math.round((now.getTime() - start.getTime()) / 86400000);
+  return Math.min(count, Math.max(1, diff + 1));
 };
 
 // 탭 라벨용 MM/DD

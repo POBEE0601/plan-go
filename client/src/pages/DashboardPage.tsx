@@ -1,3 +1,5 @@
+// 2026-10-21 PC에서도 여행 홈·저장을 고른다. 지출은 모바일만
+// 2026-10-21 계획을 열면 오늘 일차를 고르고, 날짜가 바뀌면 그 일차로 옮긴다
 // 2026-09-28 저장 가져오기는 고른 카테고리로만 미배정에 넣는다
 // 2026-09-28 저장 가져오기는 여행 이름 오른쪽 아이콘. 결과는 잠깐만 표시
 // 2026-09-28 모바일 지출 탭. 일정은 여행 홈 시트에 합침
@@ -20,9 +22,12 @@ import { useSearchParams } from 'react-router-dom';
 import {
   AlertCircle,
   Compass,
+  Heart,
   LayoutList,
   List,
   Map as MapIcon,
+  MapPin,
+  Search,
   Upload,
   UserPlus,
   X,
@@ -45,6 +50,7 @@ import SavedPlacesPanel from '../components/SavedPlacesPanel';
 import ExpensesPanel from '../components/ExpensesPanel';
 import PlanQuickActions from '../components/PlanQuickActions';
 import { parseDashboardTab } from '../utils/mobileTabs';
+import { currentTripDay, localDateStamp } from '../utils/days';
 import { useTravelStore } from '../store/useTravelStore';
 import { usePlanUiStore } from '../store/usePlanUiStore';
 import ExchangeRateBadge from '../components/ExchangeRateBadge';
@@ -133,6 +139,7 @@ export default function DashboardPage() {
     clearError,
   } = useTravelStore();
   const resetPlanUi = usePlanUiStore((s) => s.resetPlanUi);
+  const setActiveDay = usePlanUiStore((s) => s.setActiveDay);
   const savedCategory = usePlanUiStore((s) => s.savedCategory);
   const layoutMode = usePlanUiStore((s) => s.layoutMode);
   const setLayoutMode = usePlanUiStore((s) => s.setLayoutMode);
@@ -153,8 +160,9 @@ export default function DashboardPage() {
   const [isDesktop, setIsDesktop] = useState(
     () => window.matchMedia('(min-width: 1024px)').matches,
   );
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const mobileTab = parseDashboardTab(searchParams.get('tab'));
+  const desktopSaved = isDesktop && mobileTab === 'saved';
   const canWrite = myRole === 'owner' || myRole === 'editor';
   const isOwner = myRole === 'owner';
   // 좁은 화면에서는 큰 카드 목록형 대신 지도+시트만 사용
@@ -186,8 +194,44 @@ export default function DashboardPage() {
   }, []);
 
   useEffect(() => {
-    resetPlanUi();
-  }, [selectedPlanId, resetPlanUi]);
+    const day =
+      selectedPlan && selectedPlan.id === selectedPlanId
+        ? currentTripDay(selectedPlan.startDate, selectedPlan.endDate)
+        : 1;
+    resetPlanUi(day);
+  }, [
+    selectedPlanId,
+    selectedPlan?.id,
+    selectedPlan?.startDate,
+    selectedPlan?.endDate,
+    resetPlanUi,
+  ]);
+
+  // 화면을 켜 둔 채 날짜가 바뀌면, 그 날의 일차로 옮긴다
+  useEffect(() => {
+    if (!selectedPlan || selectedPlan.id !== selectedPlanId) return;
+    let stamp = localDateStamp();
+    const onDateChange = () => {
+      const today = localDateStamp();
+      if (today === stamp) return;
+      stamp = today;
+      setActiveDay(
+        currentTripDay(selectedPlan.startDate, selectedPlan.endDate, today),
+      );
+    };
+    const timer = window.setInterval(onDateChange, 30_000);
+    document.addEventListener('visibilitychange', onDateChange);
+    return () => {
+      window.clearInterval(timer);
+      document.removeEventListener('visibilitychange', onDateChange);
+    };
+  }, [
+    selectedPlanId,
+    selectedPlan?.id,
+    selectedPlan?.startDate,
+    selectedPlan?.endDate,
+    setActiveDay,
+  ]);
 
   useEffect(() => {
     if (!plansOpen) return;
@@ -241,6 +285,13 @@ export default function DashboardPage() {
     } finally {
       setImporting(false);
     }
+  };
+
+  const openDesktopSection = (section: 'home' | 'saved') => {
+    const next = new URLSearchParams(searchParams);
+    if (section === 'home') next.delete('tab');
+    else next.set('tab', 'saved');
+    setSearchParams(next);
   };
 
   const mobileTitle = selectedPlan?.title ?? '내 여행';
@@ -375,6 +426,7 @@ export default function DashboardPage() {
           ) : selectedPlan ? (
             <>
               <div className="hidden items-center justify-between gap-2 border-b border-slate-200 bg-white px-3 py-2 lg:flex sm:px-6">
+                <div className="flex min-w-0 items-center gap-3">
                 <div className="min-w-0">
                   <h2 className="truncate text-base font-bold text-slate-800 sm:text-lg">
                     {selectedPlan.title}
@@ -405,11 +457,85 @@ export default function DashboardPage() {
                     )}
                   </p>
                 </div>
+                  <div className="flex shrink-0 rounded-lg border border-slate-200 bg-slate-50 p-0.5">
+                    <button
+                      type="button"
+                      onClick={() => openDesktopSection('home')}
+                      className={`flex items-center gap-1 rounded-md px-2.5 py-1.5 text-xs font-medium ${
+                        mobileTab === 'saved'
+                          ? 'text-slate-500 hover:text-slate-700'
+                          : 'bg-white text-slate-800 shadow-sm'
+                      }`}
+                      aria-pressed={mobileTab !== 'saved'}
+                    >
+                      <MapPin className="h-3.5 w-3.5" />
+                      여행 홈
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => openDesktopSection('saved')}
+                      className={`flex items-center gap-1 rounded-md px-2.5 py-1.5 text-xs font-medium ${
+                        mobileTab === 'saved'
+                          ? 'bg-white text-slate-800 shadow-sm'
+                          : 'text-slate-500 hover:text-slate-700'
+                      }`}
+                      aria-pressed={mobileTab === 'saved'}
+                    >
+                      <Heart className="h-3.5 w-3.5" />
+                      저장
+                    </button>
+                  </div>
+                </div>
                 <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
                   <PlanQuickActions
                     onPrep={() => setPrepOpen(true)}
                     onEmergency={() => setEmergencyOpen(true)}
                   />
+                  {desktopSaved ? (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => setSearchOpen((open) => !open)}
+                        className={`flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 ${
+                          searchOpen
+                            ? 'bg-primary-50 text-primary-700'
+                            : 'bg-white text-slate-600 hover:bg-slate-50'
+                        }`}
+                        aria-label="저장 장소 검색"
+                        aria-pressed={searchOpen}
+                      >
+                        <Search className="h-4 w-4" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setSavedMapOpen((open) => !open)}
+                        className={`flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 ${
+                          savedMapOpen
+                            ? 'bg-primary-50 text-primary-700'
+                            : 'bg-white text-slate-600 hover:bg-slate-50'
+                        }`}
+                        aria-label={savedMapOpen ? '목록으로 보기' : '지도로 보기'}
+                        aria-pressed={savedMapOpen}
+                      >
+                        {savedMapOpen ? (
+                          <List className="h-4 w-4" />
+                        ) : (
+                          <MapIcon className="h-4 w-4" />
+                        )}
+                      </button>
+                      {canWrite && (
+                        <button
+                          type="button"
+                          disabled={importing}
+                          onClick={() => importFileRef.current?.click()}
+                          className="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 disabled:opacity-40"
+                          aria-label={importLabel(savedCategory)}
+                        >
+                          <Upload className="h-4 w-4" />
+                        </button>
+                      )}
+                    </>
+                  ) : (
                   <div className="hidden rounded-lg border border-slate-200 bg-slate-50 p-0.5 lg:flex">
                     <button
                       type="button"
@@ -438,6 +564,7 @@ export default function DashboardPage() {
                       <span className="hidden sm:inline">지도형</span>
                     </button>
                   </div>
+                  )}
                   {isOwner && (
                     <button
                       type="button"
@@ -451,7 +578,15 @@ export default function DashboardPage() {
                 </div>
               </div>
 
-              {useClassic ? (
+              {desktopSaved ? (
+                <div className="min-h-0 flex-1 overflow-hidden">
+                  <SavedPlacesPanel
+                    canWrite={canWrite}
+                    searchOpen={searchOpen}
+                    mapOpen={savedMapOpen}
+                  />
+                </div>
+              ) : useClassic ? (
                 <>
                   <PlaceSearchBar
                     canWrite={canWrite}
@@ -528,11 +663,13 @@ export default function DashboardPage() {
           }}
         />
       )}
-      {importNote && !isDesktop && mobileTab === 'saved' && (
+      {importNote && mobileTab === 'saved' && (
         <button
           type="button"
           onClick={() => setImportNote('')}
-          className="fixed inset-x-4 bottom-20 z-30 text-left"
+          className={`fixed z-30 text-left ${
+            isDesktop ? 'bottom-6 right-6' : 'inset-x-4 bottom-20'
+          }`}
         >
           <span className="inline-block max-h-40 max-w-sm overflow-y-auto whitespace-pre-line rounded-2xl bg-slate-900/90 px-3 py-2 text-xs leading-relaxed text-white shadow">
             {importNote}

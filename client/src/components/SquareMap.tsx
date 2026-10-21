@@ -1,3 +1,4 @@
+// 2026-10-21 같은 숙소 핀이 겹치면 순번을 벌려 보여 준다
 // 2026-09-23 기본 확대 버튼 대신 테마에 맞는 작은 버튼
 // 2026-09-23 선택 일정 장소로 지도가 따라감
 // 2026-09-22 카테고리 색 핀 + 장소명·카테고리 정보창
@@ -14,7 +15,7 @@ import { useGoogleMaps } from '../hooks/useGoogleMaps';
 import { useThemeStore } from '../store/useThemeStore';
 import { DARK_MAP_STYLES } from '../utils/mapTheme';
 import MapZoomButtons from './MapZoomButtons';
-import { numberedPinIcon, pinColorOf } from '../utils/mapPin';
+import { numberedPinIcon, pinColorOf, spreadPinPosition } from '../utils/mapPin';
 import { categoryBadge } from '../utils/days';
 import type { Place, PlaceSearchResult } from '../types/travel';
 
@@ -41,7 +42,7 @@ export default function SquareMap({ onClose }: SquareMapProps) {
   const selectAssignment = usePlanUiStore((s) => s.selectAssignment);
 
   const mapRef = useRef<google.maps.Map | null>(null);
-  const [infoPlaceId, setInfoPlaceId] = useState<string | null>(null);
+  const [infoIndex, setInfoIndex] = useState<number | null>(null);
 
   const dayAssignments = (selectedPlan?.dayAssignments ?? [])
     .filter((a) => a.dayIndex === activeDay)
@@ -77,9 +78,33 @@ export default function SquareMap({ onClose }: SquareMapProps) {
     if (zoom < 14) map.setZoom(15);
   }, [focusedPlaceId, selectedPlan, mapZoom]);
 
-  const onMarkerClick = (place: Place | PlaceSearchResult) => {
+  const routePlaces = (
+    dayAssignments.length
+      ? dayAssignments.flatMap((assignment) => {
+          const place = selectedPlan?.places.find(
+            (item) => item.id === assignment.placeId,
+          );
+          return place ? [{ assignment, place }] : [];
+        })
+      : (selectedPlan?.places ?? []).map((place) => ({
+          assignment: null,
+          place,
+        }))
+  );
+  const infoPin = infoIndex != null ? routePlaces[infoIndex] : null;
+
+  const onMarkerClick = (
+    place: Place | PlaceSearchResult,
+    index?: number,
+    assignmentId?: string,
+  ) => {
     setSelectedMapPlace(place);
     setMapCenter(place.lat, place.lng, 15);
+    if (index != null) setInfoIndex(index);
+    if (assignmentId) {
+      selectAssignment(assignmentId, { soft: true });
+      return;
+    }
     if ('id' in place) {
       const assignment = dayAssignments.find((a) => a.placeId === place.id);
       if (assignment) selectAssignment(assignment.id, { soft: true });
@@ -140,31 +165,26 @@ export default function SquareMap({ onClose }: SquareMapProps) {
                 onClick={() => onMarkerClick(r)}
               />
             ))}
-          {((dayAssignments.length
-            ? dayAssignments
-                .map((a) => selectedPlan?.places.find((p) => p.id === a.placeId))
-                .filter((p): p is Place => Boolean(p))
-            : selectedPlan?.places) ?? []
-          ).map((p, i) => (
+          {routePlaces.map(({ assignment, place: p }, i) => (
             <Marker
-              key={`${p.id}-${p.pinColor ?? ''}-${p.category}`}
-              position={{ lat: p.lat, lng: p.lng }}
+              key={`${assignment?.id ?? p.id}-${i}`}
+              position={spreadPinPosition(
+                routePlaces.map((pin) => pin.place),
+                i,
+              )}
               title={`${p.name} · ${categoryBadge(p.category)}`}
               zIndex={focusedPlaceId === p.id ? 200 : 100 + i}
               icon={numberedPinIcon(pinColorOf(p), i + 1)}
-              onClick={() => {
-                setInfoPlaceId(p.id);
-                onMarkerClick(p);
-              }}
+              onClick={() => onMarkerClick(p, i, assignment?.id)}
             />
           ))}
-            {infoPlaceId &&
-              selectedPlan?.places
-                .filter((p) => p.id === infoPlaceId)
-                .map((p) => (
+            {infoPin && (
                   <OverlayView
-                    key={`info-${p.id}`}
-                    position={{ lat: p.lat, lng: p.lng }}
+                    key={`info-${infoPin.assignment?.id ?? infoPin.place.id}`}
+                    position={spreadPinPosition(
+                      routePlaces.map((pin) => pin.place),
+                      infoIndex ?? 0,
+                    )}
                     mapPaneName={OverlayView.FLOAT_PANE}
                     getPixelPositionOffset={(width, height) => ({
                       x: -(width / 2),
@@ -180,11 +200,11 @@ export default function SquareMap({ onClose }: SquareMapProps) {
                     >
                       <div className="flex items-start gap-2">
                         <p className="min-w-0 flex-1 text-sm font-semibold leading-snug">
-                          {p.name}
+                          {infoPin.place.name}
                         </p>
                         <button
                           type="button"
-                          onClick={() => setInfoPlaceId(null)}
+                          onClick={() => setInfoIndex(null)}
                           className="rounded-md p-1 text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"
                           aria-label="장소 정보 닫기"
                         >
@@ -199,18 +219,18 @@ export default function SquareMap({ onClose }: SquareMapProps) {
                               : 'bg-slate-100 text-slate-600'
                           }`}
                         >
-                          {categoryBadge(p.category)}
+                          {categoryBadge(infoPin.place.category)}
                         </span>
-                        {p.rating != null && (
+                        {infoPin.place.rating != null && (
                           <span className="inline-flex items-center gap-0.5 font-medium text-amber-500">
                             <Star className="h-3 w-3 fill-amber-400 text-amber-400" />
-                            {p.rating.toFixed(1)}
+                            {infoPin.place.rating.toFixed(1)}
                           </span>
                         )}
                       </div>
                     </div>
                   </OverlayView>
-                ))}
+            )}
           </GoogleMap>
         )}
         {isLoaded && !loadError && (

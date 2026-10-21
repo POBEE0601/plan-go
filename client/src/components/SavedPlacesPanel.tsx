@@ -1,3 +1,4 @@
+// 2026-10-21 같은 날에 두 번 넣은 장소는 일차 배지에 횟수를 보여 준다
 // 2026-09-28 미배정은 카테고리로 나누고 개수를 보여 준다
 // 2026-09-28 가져오기는 상단 아이콘으로 옮겨 목록 위 안내 칸을 없앰
 // 2026-09-28 지도 버튼은 상단으로 옮기고, 테이크아웃 JSON은 미배정으로 넣음
@@ -303,7 +304,10 @@ export default function SavedPlacesPanel({
               )}
               <ul>
           {rows.map((place) => {
-            const days = assignedDaysOf(place.id);
+            const dayCounts = new Map<number, number>();
+            for (const day of assignedDaysOf(place.id)) {
+              dayCounts.set(day, (dayCounts.get(day) ?? 0) + 1);
+            }
             return (
               <li
                 key={place.id}
@@ -329,12 +333,12 @@ export default function SavedPlacesPanel({
                         <span className="rounded bg-slate-100 px-1.5 py-0.5 text-slate-600">
                           {categoryBadge(place.category)}
                         </span>
-                        {days.map((d) => (
+                        {[...dayCounts.entries()].map(([d, count]) => (
                           <span
                             key={d}
                             className="rounded bg-primary-50 px-1.5 py-0.5 text-primary-700"
                           >
-                            {d}일차
+                            {d}일차{count > 1 ? ` ×${count}` : ''}
                           </span>
                         ))}
                       </span>

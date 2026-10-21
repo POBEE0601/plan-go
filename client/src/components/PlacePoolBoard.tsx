@@ -1,3 +1,4 @@
+// 2026-10-21 같은 장소가 하루에 두 번이면 누른 순서의 배정을 고른다
 // 2026-09-28 모바일 여행 홈: 시트를 내리면 카드, 올리면 시간순 목록
 // 2026-09-23 여행홈 시트 최소 높이는 가로 카드까지
 // 2026-09-23 일정 검색·지도 돋보기·하단 시트 드래그
@@ -673,8 +674,11 @@ export default function PlacePoolBoard({
     : null;
   const focusPlaceId = selectedPlace?.id ?? null;
 
-  const onSelectMapPlace = (placeId: string) => {
-    const assignment = assignments.find((a) => a.placeId === placeId);
+  const onSelectMapPlace = (placeId: string, index?: number) => {
+    const assignment =
+      index != null && assignments[index]?.placeId === placeId
+        ? assignments[index]
+        : assignments.find((a) => a.placeId === placeId);
     if (!assignment) return;
     if (mobilePane === 'map' || mobilePane === 'schedule') {
       selectAssignment(assignment.id, { soft: true });

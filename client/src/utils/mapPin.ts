@@ -1,3 +1,4 @@
+// 2026-10-21 같은 좌표 핀(숙소 출발·귀환)은 동쪽으로 벌려 둘 다 보이게
 // 2026-09-28 저장 지도 핀은 카테고리마다 속 모양을 달리한다
 // 2026-09-28 번호 0은 글자 없는 핀 (저장 지도)
 // 2026-09-23 같은 핀은 아이콘 객체를 재사용해 장소 이동 때 다시 그리지 않음
@@ -8,6 +9,30 @@ import type { Place } from '../types/travel';
 
 export const pinColorOf = (place: Place): string =>
   resolvePinColor(place.category, place.pinColor);
+
+// 앞에 같은 좌표가 있으면 약 32m씩 동쪽으로 민다. 경로선은 원래 좌표를 쓴다
+export const spreadPinPosition = (
+  points: { lat: number; lng: number }[],
+  index: number,
+): { lat: number; lng: number } => {
+  const point = points[index];
+  if (!point) return { lat: 0, lng: 0 };
+  let dup = 0;
+  for (let i = 0; i < index; i += 1) {
+    const prev = points[i];
+    if (
+      Math.abs(prev.lat - point.lat) < 1e-6 &&
+      Math.abs(prev.lng - point.lng) < 1e-6
+    ) {
+      dup += 1;
+    }
+  }
+  if (dup === 0) return { lat: point.lat, lng: point.lng };
+  const meters = 32 * dup;
+  const cos = Math.cos((point.lat * Math.PI) / 180);
+  const dLng = meters / (111320 * Math.max(0.2, Math.abs(cos)));
+  return { lat: point.lat, lng: point.lng + dLng };
+};
 
 const iconCache = new Map<string, google.maps.Icon>();
 

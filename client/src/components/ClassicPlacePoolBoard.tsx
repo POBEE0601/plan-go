@@ -1,3 +1,4 @@
+// 2026-10-21 같은 장소가 하루에 두 번이면 누른 순서의 배정을 고른다
 // 2026-09-23 빈 날은 지도 검색으로 담는다고 안내
 // 2026-09-22 일정 카드 첫 줄에 길찾기·메모 미리보기
 // 2026-09-22 목록형 카드에 카테고리·핀 색·소개
@@ -501,8 +502,12 @@ function DayWorkPanel({
         <DayTimelineMap
           places={orderedPlaces}
           focusPlaceId={focusPlaceId}
-          onSelectPlace={(placeId) => {
-            const assignment = assignments.find((a) => a.placeId === placeId);
+          focusToken={selectedAssignmentId}
+          onSelectPlace={(placeId, index) => {
+            const assignment =
+              index != null && assignments[index]?.placeId === placeId
+                ? assignments[index]
+                : assignments.find((a) => a.placeId === placeId);
             if (assignment) focusAssignment(assignment.id);
             else selectAssignment(null, { soft: true });
           }}

@@ -1,3 +1,4 @@
+// 2026-10-21 이미 그 날에 있는 장소도 일정 끝에 한 번 더 넣는다
 // 2026-09-01 검색 결과 카테고리 이모지
 // 2026-09-01 모바일: 검색줄 압축·지도 버튼 아이콘화
 // 2026-08-31 상단 장소 검색바 (지도와 분리)
@@ -54,6 +55,7 @@ export default function PlaceSearchBar({
   const activeDay = usePlanUiStore((s) => s.activeDay);
   const setSheetSnap = usePlanUiStore((s) => s.setSheetSnap);
   const setPoolOpen = usePlanUiStore((s) => s.setPoolOpen);
+  const selectAssignment = usePlanUiStore((s) => s.selectAssignment);
 
   const [query, setQuery] = useState('');
   const [searching, setSearching] = useState(false);
@@ -120,12 +122,15 @@ export default function PlaceSearchBar({
       }
       if (!placeId) return;
       if (assignDay) {
-        const onDay = useTravelStore
+        // 숙소처럼 출발·귀환이 같으면 같은 장소를 하루에 여러 번 담는다
+        await assignToDay(placeId, activeDay);
+        const added = useTravelStore
           .getState()
-          .selectedPlan?.dayAssignments.some(
+          .selectedPlan?.dayAssignments.filter(
             (a) => a.placeId === placeId && a.dayIndex === activeDay,
-          );
-        if (!onDay) await assignToDay(placeId, activeDay);
+          )
+          .sort((a, b) => b.order - a.order)[0];
+        if (added) selectAssignment(added.id, { soft: true });
         setPoolOpen(false);
         setSheetSnap('half');
       }
