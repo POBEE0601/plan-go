@@ -53,6 +53,13 @@ export const ensureExpenseSchema = async (): Promise<void> => {
     `CREATE INDEX IF NOT EXISTS idx_plan_expenses_plan
       ON plan_expenses(plan_id, created_at DESC)`,
   );
+  await pool.query(
+    `ALTER TABLE plan_expenses ADD COLUMN IF NOT EXISTS refund_status TEXT`,
+  );
+  await pool.query(
+    `ALTER TABLE plan_expenses
+      ADD COLUMN IF NOT EXISTS refund_mixed BOOLEAN NOT NULL DEFAULT false`,
+  );
 };
 
 // 2026-09-22 핀 색 컬럼 + 레거시 카테고리 정규화

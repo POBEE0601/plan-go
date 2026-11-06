@@ -76,10 +76,32 @@ export default function Header({
           )}
 
           <nav className="hidden items-center gap-1 lg:flex">
+            <Link
+              to="/"
+              className={`rounded-lg px-3 py-1.5 text-sm hover:bg-slate-50 ${
+                location.pathname === '/' || location.pathname.startsWith('/desk')
+                  ? 'font-medium text-primary-700'
+                  : 'text-slate-600'
+              }`}
+              aria-current={
+                location.pathname === '/' || location.pathname.startsWith('/desk')
+                  ? 'page'
+                  : undefined
+              }
+            >
+              메인
+            </Link>
             {isAuthenticated && (
               <Link
                 to="/dashboard"
-                className="rounded-lg px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-50"
+                className={`rounded-lg px-3 py-1.5 text-sm hover:bg-slate-50 ${
+                  location.pathname.startsWith('/dashboard')
+                    ? 'font-medium text-primary-700'
+                    : 'text-slate-600'
+                }`}
+                aria-current={
+                  location.pathname.startsWith('/dashboard') ? 'page' : undefined
+                }
               >
                 내 여행
               </Link>
@@ -141,7 +163,7 @@ export default function Header({
         </div>
 
         <Link
-          to={isAuthenticated ? '/dashboard' : '/'}
+          to="/"
           className="pointer-events-auto absolute left-1/2 top-1/2 z-10 -translate-x-1/2 -translate-y-1/2"
           aria-label="plan-go 홈"
         >
@@ -256,6 +278,13 @@ export default function Header({
             )}
 
             <nav className="flex flex-1 flex-col gap-1 overflow-y-auto p-3">
+              <Link
+                to="/"
+                onClick={closeNav}
+                className="flex items-center gap-2 rounded-lg px-3 py-3 text-sm text-slate-700 hover:bg-slate-50"
+              >
+                메인
+              </Link>
               {isAuthenticated && (
                 <Link
                   to="/dashboard"

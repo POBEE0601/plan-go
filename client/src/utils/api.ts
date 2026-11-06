@@ -11,6 +11,7 @@ import type {
   CustomCategory,
   DayAssignment,
   ExpenseMethod,
+  ExpenseRefundStatus,
   InvitePreview,
   Place,
   PlaceSearchResult,
@@ -573,10 +574,25 @@ export const travelApi = {
       dayIndex: number | null;
       placeId: string | null;
       note: string;
+      refundStatus?: ExpenseRefundStatus | null;
+      refundMixed?: boolean;
     },
   ) =>
     request<PlanExpense>(`/travel-plans/${planId}/expenses`, {
       method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  updateExpense: (
+    planId: string,
+    expenseId: string,
+    data: {
+      refundStatus: ExpenseRefundStatus | null;
+      refundMixed: boolean;
+    },
+  ) =>
+    request<PlanExpense>(`/travel-plans/${planId}/expenses/${expenseId}`, {
+      method: 'PATCH',
       body: JSON.stringify(data),
     }),
 

@@ -11,6 +11,7 @@ import {
   useNavigate,
   useParams,
 } from 'react-router-dom';
+import ConfirmDialog from '../components/ConfirmDialog';
 import {
   ArrowLeft,
   Eye,
@@ -442,6 +443,7 @@ function ReleaseDetail() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  const [confirmOpen, setConfirmOpen] = useState(false);
 
   useEffect(() => {
     if (!id) return;
@@ -469,7 +471,7 @@ function ReleaseDetail() {
 
   const handleDelete = async () => {
     if (!post || !isAdmin) return;
-    if (!window.confirm('이 배포 글을 삭제할까요?')) return;
+    setConfirmOpen(false);
     setBusy(true);
     try {
       await releaseApi.remove(post.id);
@@ -533,7 +535,7 @@ function ReleaseDetail() {
               </Link>
               <button
                 type="button"
-                onClick={handleDelete}
+                onClick={() => setConfirmOpen(true)}
                 disabled={busy}
                 className="rounded-lg border border-slate-200 p-2 text-slate-500 hover:bg-red-50 hover:text-red-600"
               >
@@ -556,6 +558,13 @@ function ReleaseDetail() {
       )}
 
       <FilePreviewModal file={preview} onClose={() => setPreview(null)} />
+      <ConfirmDialog
+        open={confirmOpen}
+        title="배포 글 삭제"
+        body="이 배포 글을 삭제할까요?"
+        onClose={() => setConfirmOpen(false)}
+        onConfirm={() => void handleDelete()}
+      />
     </div>
   );
 }

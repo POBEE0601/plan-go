@@ -22,6 +22,7 @@ import {
   Trash2,
 } from 'lucide-react';
 import FilePreviewModal from '../components/FilePreviewModal';
+import ConfirmDialog from '../components/ConfirmDialog';
 import AppPageShell from '../components/AppPageShell';
 import BoardSectionTabs from '../components/BoardSectionTabs';
 import { boardApi } from '../utils/api';
@@ -356,6 +357,9 @@ function BoardDetail() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  const [confirm, setConfirm] = useState<
+    { kind: 'post' } | { kind: 'comment'; id: string } | null
+  >(null);
 
   const load = async () => {
     if (!id) return;
@@ -402,7 +406,7 @@ function BoardDetail() {
 
   const handleDelete = async () => {
     if (!post?.isMine) return;
-    if (!window.confirm('이 글을 삭제할까요?')) return;
+    setConfirm(null);
     setBusy(true);
     try {
       await boardApi.remove(post.id);
@@ -430,7 +434,7 @@ function BoardDetail() {
   };
 
   const handleDeleteComment = async (commentId: string) => {
-    if (!window.confirm('댓글을 삭제할까요?')) return;
+    setConfirm(null);
     setBusy(true);
     try {
       await boardApi.removeComment(commentId);
@@ -501,7 +505,7 @@ function BoardDetail() {
               </Link>
               <button
                 type="button"
-                onClick={handleDelete}
+                onClick={() => setConfirm({ kind: 'post' })}
                 disabled={busy}
                 className="rounded-lg border border-slate-200 p-2 text-slate-500 hover:bg-red-50 hover:text-red-600"
                 title="삭제"
@@ -574,7 +578,7 @@ function BoardDetail() {
                 {c.isMine && (
                   <button
                     type="button"
-                    onClick={() => handleDeleteComment(c.id)}
+                    onClick={() => setConfirm({ kind: 'comment', id: c.id })}
                     className="text-xs text-slate-400 hover:text-red-500"
                   >
                     삭제
@@ -606,6 +610,18 @@ function BoardDetail() {
       </section>
 
       <FilePreviewModal file={preview} onClose={() => setPreview(null)} />
+      <ConfirmDialog
+        open={confirm != null}
+        title={confirm?.kind === 'comment' ? '댓글 삭제' : '글 삭제'}
+        body={
+          confirm?.kind === 'comment' ? '댓글을 삭제할까요?' : '이 글을 삭제할까요?'
+        }
+        onClose={() => setConfirm(null)}
+        onConfirm={() => {
+          if (confirm?.kind === 'comment') void handleDeleteComment(confirm.id);
+          else void handleDelete();
+        }}
+      />
     </div>
   );
 }

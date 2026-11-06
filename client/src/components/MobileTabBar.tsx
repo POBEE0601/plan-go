@@ -66,6 +66,7 @@ export default function MobileTabBar() {
                 className={`flex min-h-12 flex-col items-center justify-center gap-0.5 px-1 py-1.5 ${
                   active ? 'text-slate-900' : 'text-slate-400'
                 }`}
+                data-tour={id === 'saved' ? 'saved-tab' : undefined}
                 aria-current={active ? 'page' : undefined}
               >
                 <Icon

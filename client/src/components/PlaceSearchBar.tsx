@@ -1,3 +1,4 @@
+// 2026-11-06 먼저 이 여행에 있는 장소를 거르고, 새 장소 검색은 한 번 더 누른다
 // 2026-10-21 이미 그 날에 있는 장소도 일정 끝에 한 번 더 넣는다
 // 2026-09-01 검색 결과 카테고리 이모지
 // 2026-09-01 모바일: 검색줄 압축·지도 버튼 아이콘화
@@ -53,15 +54,17 @@ export default function PlaceSearchBar({
   const { searchResults, setSearchResults, clearSearchResults } =
     useMapUiStore();
   const activeDay = usePlanUiStore((s) => s.activeDay);
+  const setActiveDay = usePlanUiStore((s) => s.setActiveDay);
+  const selectAssignment = usePlanUiStore((s) => s.selectAssignment);
   const setSheetSnap = usePlanUiStore((s) => s.setSheetSnap);
   const setPoolOpen = usePlanUiStore((s) => s.setPoolOpen);
-  const selectAssignment = usePlanUiStore((s) => s.selectAssignment);
 
   const [query, setQuery] = useState('');
   const [searching, setSearching] = useState(false);
   const [adding, setAdding] = useState(false);
   const [searchError, setSearchError] = useState('');
   const [resultsOpen, setResultsOpen] = useState(true);
+  const [remote, setRemote] = useState(false);
 
   const isSearchResult = (
     place: unknown,
@@ -157,6 +160,96 @@ export default function PlaceSearchBar({
     (selectedMapPlace && isSearchResult(selectedMapPlace));
 
   const isBar = variant === 'bar';
+  const localQuery = query.trim().toLowerCase();
+  const localPlaces =
+    localQuery.length === 0
+      ? []
+      : (selectedPlan?.places ?? []).filter(
+          (place) =>
+            place.name.toLowerCase().includes(localQuery) ||
+            (place.address ?? '').toLowerCase().includes(localQuery),
+        );
+
+  const focusSaved = (placeId: string) => {
+    const place = selectedPlan?.places.find((item) => item.id === placeId);
+    if (!place) return;
+    setMapCenter(place.lat, place.lng, 15);
+    setSelectedMapPlace(place);
+    const assignment =
+      selectedPlan?.dayAssignments.find(
+        (row) => row.placeId === place.id && row.dayIndex === activeDay,
+      ) ??
+      selectedPlan?.dayAssignments.find((row) => row.placeId === place.id);
+    if (!assignment) return;
+    if (assignment.dayIndex !== activeDay) setActiveDay(assignment.dayIndex);
+    selectAssignment(assignment.id, { soft: true });
+  };
+
+  if (!remote) {
+    return (
+      <div
+        className={
+          isBar
+            ? 'shrink-0 border-b border-slate-200 bg-white'
+            : 'pointer-events-auto w-full max-w-lg overflow-hidden rounded-xl border border-slate-200 bg-white/95 shadow-sm'
+        }
+      >
+        <form
+          onSubmit={(event) => event.preventDefault()}
+          className={
+            isBar
+              ? 'flex items-center gap-2 px-3 py-2 sm:px-4 sm:py-2.5'
+              : 'flex items-center gap-2 px-2 py-2'
+          }
+        >
+          <div className="relative min-w-0 flex-1">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+            <input
+              type="text"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="이 여행에서 찾기"
+              aria-label="저장한 장소 찾기"
+              className="w-full rounded-lg border border-slate-200 bg-white py-2 pl-9 pr-8 text-sm text-slate-900 outline-none placeholder:text-slate-400 focus:border-primary-500"
+            />
+            {query && (
+              <button
+                type="button"
+                onClick={() => setQuery('')}
+                className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-0.5 text-slate-400"
+                aria-label="검색 지우기"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            )}
+          </div>
+          <button
+            type="button"
+            onClick={() => setRemote(true)}
+            className="shrink-0 rounded-lg border border-slate-200 px-2.5 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50"
+          >
+            새 장소
+          </button>
+        </form>
+        {localPlaces.length > 0 && (
+          <div className="max-h-40 overflow-y-auto border-t border-slate-100">
+            {localPlaces.map((place) => (
+              <button
+                key={place.id}
+                type="button"
+                onClick={() => focusSaved(place.id)}
+                className="flex min-h-11 w-full items-center gap-2 px-3 py-1.5 text-left text-sm hover:bg-slate-50"
+              >
+                <span>{categoryEmoji(place.category)}</span>
+                <span className="truncate font-medium text-slate-800">{place.name}</span>
+                <span className="truncate text-xs text-slate-500">{place.address}</span>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div
@@ -196,6 +289,16 @@ export default function PlaceSearchBar({
             </button>
           )}
         </div>
+        <button
+          type="button"
+          onClick={() => {
+            setRemote(false);
+            handleClear();
+          }}
+          className="shrink-0 rounded-lg border border-slate-200 px-2 py-2 text-xs font-medium text-slate-600"
+        >
+          저장 장소
+        </button>
         <button
           type="submit"
           disabled={searching}

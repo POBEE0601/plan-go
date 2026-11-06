@@ -1,3 +1,4 @@
+// 2026-11-06 넓은 화면은 미배정을 일정 아래에 둔다. 시간은 목록에서 고친다
 // 2026-10-21 PC 일정 목록은 오른쪽 경계를 끌어 너비를 조절한다
 // 2026-10-21 같은 장소가 하루에 두 번이면 누른 순서의 배정을 고른다
 // 2026-09-28 모바일 여행 홈: 시트를 내리면 카드, 올리면 시간순 목록
@@ -36,6 +37,7 @@ import {
   Maximize2,
   Plus,
   Search,
+  Share2,
   Trash2,
   X,
 } from 'lucide-react';
@@ -69,6 +71,8 @@ import {
   pausePlanSync,
 } from '../utils/dragLock';
 import { usePlanUiStore } from '../store/usePlanUiStore';
+import { BOARD_WIDE_MQ } from '../utils/layout';
+import { buildDayShareText, shareOrCopyText } from '../utils/shareDay';
 import {
   categoryBadge,
   categoryEmoji,
@@ -114,12 +118,18 @@ function CompactAssignmentRow({
   selected: boolean;
   onFocus: () => void;
 }) {
+  const updateAssignmentTime = useTravelStore((s) => s.updateAssignmentTime);
+  const [time, setTime] = useState(assignment.time ?? '');
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({
       id: assignment.id,
       data: { type: 'assignment', assignment, place },
       disabled: !canWrite,
     });
+
+  useEffect(() => {
+    setTime(assignment.time ?? '');
+  }, [assignment.time]);
 
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -151,8 +161,8 @@ function CompactAssignmentRow({
           <GripVertical className="h-3.5 w-3.5" />
         </button>
       )}
-      <div className="min-w-0 flex-1">
-        <div className="flex min-h-9 min-w-0 items-center gap-1.5">
+      <div className="min-w-0 flex-1 overflow-hidden">
+        <div className="flex min-h-9 min-w-0 items-center gap-1">
           <button
             type="button"
             onClick={onFocus}
@@ -172,7 +182,26 @@ function CompactAssignmentRow({
           </button>
           <AssignmentPeekActions place={place} memo={assignment.memo} />
         </div>
-        <div className="pl-7">
+        <div className="mt-0.5 flex min-w-0 items-center gap-1 pl-7">
+          {canWrite ? (
+            <input
+              data-tour="place-time"
+              type="time"
+              value={/^\d{2}:\d{2}$/.test(time) ? time : ''}
+              onChange={(event) => setTime(event.target.value)}
+              onBlur={() => {
+                const next = /^\d{2}:\d{2}$/.test(time) ? time : '';
+                if ((assignment.time ?? '') === next) return;
+                void updateAssignmentTime(assignment.id, next);
+              }}
+              aria-label={`${place.name} 방문 시간`}
+              className="h-8 w-full max-w-[11rem] rounded-md border border-slate-200 bg-white px-1.5 text-xs text-slate-700"
+            />
+          ) : assignment.time ? (
+            <span className="truncate text-[11px] text-slate-500">{assignment.time}</span>
+          ) : null}
+        </div>
+        <div className="min-w-0 pl-7">
           <PlaceMetaEditor place={place} canWrite={canWrite} />
         </div>
       </div>
@@ -370,7 +399,7 @@ function CompactTimeline({
         {assignments.length === 0 && (
           <p className="px-2 py-8 text-center text-xs text-slate-400">
             {canWrite
-              ? '지도의 돋보기로 장소를 찾아 이 날에 담으세요'
+              ? '미배정에서 이 날에 담거나, 돋보기에서 저장한 장소를 고르세요'
               : '아직 배정된 장소가 없습니다'}
           </p>
         )}
@@ -520,6 +549,56 @@ function PoolPanel({ canWrite }: { canWrite: boolean }) {
   );
 }
 
+function UnassignedDock({ canWrite }: { canWrite: boolean }) {
+  const {
+    selectedPlan,
+    assignToDay,
+    deletePlace,
+    setMapCenter,
+    setSelectedMapPlace,
+  } = useTravelStore();
+  const activeDay = usePlanUiStore((s) => s.activeDay);
+  if (!selectedPlan) return null;
+  const assigned = new Set(selectedPlan.dayAssignments.map((row) => row.placeId));
+  const places = selectedPlan.places.filter((place) => !assigned.has(place.id));
+  const ids = places.map((place) => `pool-${place.id}`);
+
+  return (
+    <div
+      data-tour="unassigned"
+      className="flex max-h-[42%] min-h-[7.5rem] shrink-0 flex-col border-t border-slate-200"
+    >
+      <p className="px-3 py-1.5 text-xs font-semibold text-slate-500">
+        미배정 {places.length}
+      </p>
+      <SortableContext items={ids} strategy={verticalListSortingStrategy}>
+        <div className="min-h-0 flex-1 space-y-1 overflow-y-auto px-2 pb-2">
+          {places.length === 0 ? (
+            <p className="px-1 py-2 text-xs text-slate-400">
+              모든 장소가 일정에 있습니다.
+            </p>
+          ) : (
+            places.map((place) => (
+              <CompactPoolPlace
+                key={place.id}
+                place={place}
+                canWrite={canWrite}
+                activeDay={activeDay}
+                onDelete={() => deletePlace(place.id)}
+                onAssign={(day) => assignToDay(place.id, day)}
+                onFocus={() => {
+                  setMapCenter(place.lat, place.lng);
+                  setSelectedMapPlace(place);
+                }}
+              />
+            ))
+          )}
+        </div>
+      </SortableContext>
+    </div>
+  );
+}
+
 function TimelineChrome({
   canWrite,
   onMapFocus,
@@ -531,11 +610,34 @@ function TimelineChrome({
 }) {
   const selectedPlan = useTravelStore((s) => s.selectedPlan);
   const { activeDay, poolOpen, togglePool } = usePlanUiStore();
+  const [shareNote, setShareNote] = useState('');
   if (!selectedPlan) return null;
 
   const assignments = selectedPlan.dayAssignments
     .filter((d) => d.dayIndex === activeDay)
     .sort((a, b) => a.order - b.order);
+  const placesById: Record<string, Place> = {};
+  selectedPlan.places.forEach((place) => {
+    placesById[place.id] = place;
+  });
+
+  const shareDay = async () => {
+    const text = buildDayShareText(
+      selectedPlan,
+      activeDay,
+      assignments,
+      placesById,
+    );
+    try {
+      const result = await shareOrCopyText(text, selectedPlan.title);
+      if (result === 'copied') setShareNote('복사했습니다');
+      else if (result === 'shared') setShareNote('');
+      else setShareNote('');
+    } catch {
+      setShareNote('복사하지 못했습니다');
+    }
+    window.setTimeout(() => setShareNote(''), 2000);
+  };
 
   return (
     <div className="flex shrink-0 items-center gap-2 border-b border-slate-100 px-3 py-2">
@@ -556,6 +658,17 @@ function TimelineChrome({
           <Maximize2 className="h-3.5 w-3.5" />
           지도
         </button>
+      )}
+      <button
+        type="button"
+        onClick={() => void shareDay()}
+        className="shrink-0 rounded-lg bg-slate-100 px-2 py-1 text-[11px] font-medium text-slate-600 hover:bg-slate-200"
+        aria-label="이 날 일정 보내기"
+      >
+        <Share2 className="h-3.5 w-3.5" />
+      </button>
+      {shareNote && (
+        <span className="shrink-0 text-[10px] text-slate-500">{shareNote}</span>
       )}
       {showPool && (
         <button
@@ -617,7 +730,7 @@ export default function PlacePoolBoard({
   // DevTools 모바일·주소창 때문에 레이아웃보다 시각 뷰포트가 짧을 때 하단 여백
   const [mapDockBottom, setMapDockBottom] = useState(24);
   const [isDesktop, setIsDesktop] = useState(
-    () => window.matchMedia('(min-width: 1024px)').matches,
+    () => window.matchMedia(BOARD_WIDE_MQ).matches,
   );
   const pinRowRef = useRef<HTMLDivElement>(null);
   const [pinListWidth, setPinListWidth] = useState(readPinListWidth);
@@ -666,7 +779,7 @@ export default function PlacePoolBoard({
   };
 
   useEffect(() => {
-    const mq = window.matchMedia('(min-width: 1024px)');
+    const mq = window.matchMedia(BOARD_WIDE_MQ);
     const onChange = () => setIsDesktop(mq.matches);
     mq.addEventListener('change', onChange);
     return () => mq.removeEventListener('change', onChange);
@@ -934,7 +1047,7 @@ export default function PlacePoolBoard({
               ? 'border border-primary-200 bg-primary-600 text-white'
               : 'border-2 border-primary-400 bg-primary-50 text-primary-700'
           }`}
-          aria-label={mapSearchOpen ? '검색 닫기' : '장소 검색'}
+          aria-label={mapSearchOpen ? '검색 닫기' : '저장한 장소 찾기'}
           aria-pressed={mapSearchOpen}
         >
           <Search className="h-5 w-5" strokeWidth={1.8} />
@@ -1004,6 +1117,18 @@ export default function PlacePoolBoard({
                     assignments={assignments}
                     placesById={placesById}
                     selectedAssignmentId={selectedAssignmentId}
+                    canWrite={canWrite}
+                    onMove={(assignmentId, direction) => {
+                      const ids = assignments.map((row) => row.id);
+                      const index = ids.indexOf(assignmentId);
+                      const next = index + direction;
+                      if (index < 0 || next < 0 || next >= ids.length) return;
+                      const swapped = [...ids];
+                      const current = swapped[index];
+                      swapped[index] = swapped[next];
+                      swapped[next] = current;
+                      void reorderDayAssignments(activeDay, swapped);
+                    }}
                     onSelect={(id) => selectAssignment(id, { soft: true })}
                   />
                 </div>
@@ -1018,17 +1143,17 @@ export default function PlacePoolBoard({
         <div ref={pinRowRef} className="relative flex min-h-0 flex-1 overflow-hidden">
           {isDesktop && (
             <aside
-              className="relative flex shrink-0 flex-col border-r border-slate-200 bg-white"
+              className="relative z-20 flex shrink-0 flex-col overflow-hidden border-r border-slate-200 bg-white"
               style={{ width: pinListWidth }}
             >
-              <TimelineChrome canWrite={canWrite} />
+              <TimelineChrome canWrite={canWrite} showPool={false} />
               <CompactTimeline
                 dayIndex={activeDay}
                 assignments={assignments}
                 placesById={placesById}
                 canWrite={canWrite}
               />
-              {poolOpen && <PoolPanel canWrite={canWrite} />}
+              <UnassignedDock canWrite={canWrite} />
               <div
                 role="separator"
                 aria-orientation="vertical"
@@ -1054,7 +1179,7 @@ export default function PlacePoolBoard({
             {(!mapFocus || mapFocusSearch) && (
               <div className="pointer-events-none absolute inset-x-0 top-0 z-10 p-3">
                 <div className="flex items-start gap-2">
-                  <div className="min-w-0 flex-1">
+                  <div className="pointer-events-auto min-w-0 max-w-md flex-1">
                     <PlaceSearchBar canWrite={canWrite} />
                   </div>
                   {!isDesktop && !mapFocus && (

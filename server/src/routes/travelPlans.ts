@@ -31,6 +31,7 @@ import {
   deletePrepItem,
   listExpenses,
   addExpense,
+  updateExpense,
   deleteExpense,
   canWrite,
   updatePlanParty,
@@ -45,6 +46,7 @@ import { dismissTravelAlert, listMatchingAlerts } from '../db/alerts.js';
 import type {
   AssignDayBody,
   CreateExpenseBody,
+  UpdateExpenseBody,
   CreatePlaceBody,
   CreateTravelPlanBody,
   InviteBody,
@@ -59,7 +61,7 @@ const param = (value: string | string[]): string =>
 const handleError = (res: import('express').Response, err: unknown) => {
   const message =
     err instanceof Error ? err.message : '요청 처리 중 오류가 발생했습니다.';
-  const status = /찾을 수 없|권한|이미|입력|읽을|4000자|30줄|넣을 일정/.test(message) ? 400 : 500;
+  const status = /찾을 수 없|권한|이미|입력|읽을|4000자|30줄|넣을 일정|환급/.test(message) ? 400 : 500;
   res.status(status).json({ message });
 };
 
@@ -600,6 +602,24 @@ router.post('/:planId/expenses', async (req: AuthRequest, res) => {
       return;
     }
     res.status(201).json(item);
+  } catch (err) {
+    handleError(res, err);
+  }
+});
+
+router.patch('/:planId/expenses/:expenseId', async (req: AuthRequest, res) => {
+  try {
+    const item = await updateExpense(
+      param(req.params.planId),
+      req.userId!,
+      param(req.params.expenseId),
+      req.body as UpdateExpenseBody,
+    );
+    if (!item) {
+      res.status(404).json({ message: '지출을 찾을 수 없습니다.' });
+      return;
+    }
+    res.json(item);
   } catch (err) {
     handleError(res, err);
   }

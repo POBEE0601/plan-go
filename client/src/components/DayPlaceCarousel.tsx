@@ -1,3 +1,4 @@
+// 2026-11-06 카드에서 앞뒤로 순서를 바꾼다
 // 2026-09-23 빈 카드는 돋보기 검색으로 담으라고 안내
 // 2026-09-23 가로로 넘기면 가운데 카드만 고르고, 드래그 클릭은 선택을 되돌리지 않음
 // 2026-09-23 카드가 직접 고른 장소는 다시 스크롤하지 않아 선택이 되돌아가지 않음
@@ -5,6 +6,7 @@
 // 2026-09-23 핀 번호는 보이는 장소 순서와 동일
 // 2026-09-23 여행 홈: 가로 스와이프 카드가 지도 초점을 바꿈
 import { useEffect, useRef } from 'react';
+import { ChevronDown, ChevronUp } from 'lucide-react';
 import type { DayAssignment, Place } from '../types/travel';
 import { categoryBadge, categoryEmoji, resolvePinColor } from '../utils/days';
 
@@ -13,6 +15,8 @@ interface DayPlaceCarouselProps {
   placesById: Record<string, Place>;
   selectedAssignmentId: string | null;
   onSelect: (assignmentId: string) => void;
+  canWrite?: boolean;
+  onMove?: (assignmentId: string, direction: -1 | 1) => void;
 }
 
 export default function DayPlaceCarousel({
@@ -20,6 +24,8 @@ export default function DayPlaceCarousel({
   placesById,
   selectedAssignmentId,
   onSelect,
+  canWrite = false,
+  onMove,
 }: DayPlaceCarouselProps) {
   const scrollerRef = useRef<HTMLDivElement>(null);
   const aligningRef = useRef(false);
@@ -108,7 +114,7 @@ export default function DayPlaceCarousel({
   if (assignments.length === 0) {
     return (
       <p className="px-5 py-4 text-sm text-slate-400">
-        왼쪽 돋보기로 장소를 검색해 이 날에 담아 보세요.
+        저장한 장소를 고르거나, 돋보기에서 이 여행의 장소를 찾아 담아 보세요.
       </p>
     );
   }
@@ -135,13 +141,20 @@ export default function DayPlaceCarousel({
           (row): row is { assignment: DayAssignment; place: Place } =>
             Boolean(row.place),
         )
-        .map(({ assignment, place }, index) => {
+        .map(({ assignment, place }, index, rows) => {
         const active = assignment.id === selectedAssignmentId;
         return (
-          <button
+          <div
             key={assignment.id}
-            type="button"
             data-carousel-id={assignment.id}
+            className={`flex w-[min(78vw,20rem)] shrink-0 snap-center items-center gap-2 rounded-2xl border bg-white p-3 text-left shadow-sm transition duration-200 ${
+              active
+                ? 'border-primary-400 ring-1 ring-primary-200'
+                : 'border-slate-200'
+            }`}
+          >
+          <button
+            type="button"
             onClick={() => {
               if (dragRef.current.moved) {
                 dragRef.current.moved = false;
@@ -151,11 +164,7 @@ export default function DayPlaceCarousel({
               pickedIdRef.current = assignment.id;
               onSelect(assignment.id);
             }}
-            className={`flex w-[min(78vw,20rem)] shrink-0 snap-center items-center gap-3 rounded-2xl border bg-white p-3 text-left shadow-sm transition duration-200 ${
-              active
-                ? 'border-primary-400 ring-1 ring-primary-200'
-                : 'border-slate-200'
-            }`}
+            className="flex min-w-0 flex-1 items-center gap-3 text-left"
           >
             <span
               className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[11px] font-bold text-white"
@@ -184,11 +193,35 @@ export default function DayPlaceCarousel({
                 {place.name}
               </span>
               <span className="mt-0.5 block truncate text-xs text-slate-500">
+                {assignment.time ? `${assignment.time} · ` : ''}
                 {categoryBadge(place.category)}
                 {place.memo ? ` · ${place.memo}` : ''}
               </span>
             </span>
           </button>
+          {canWrite && onMove && (
+            <div className="flex shrink-0 flex-col">
+              <button
+                type="button"
+                disabled={index === 0}
+                onClick={() => onMove(assignment.id, -1)}
+                className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 disabled:opacity-30"
+                aria-label="앞으로"
+              >
+                <ChevronUp className="h-4 w-4" />
+              </button>
+              <button
+                type="button"
+                disabled={index === rows.length - 1}
+                onClick={() => onMove(assignment.id, 1)}
+                className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 disabled:opacity-30"
+                aria-label="뒤로"
+              >
+                <ChevronDown className="h-4 w-4" />
+              </button>
+            </div>
+          )}
+          </div>
         );
       })}
     </div>

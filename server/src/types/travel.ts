@@ -73,6 +73,9 @@ export interface PrepItem {
 // 2026-09-28 여행 중 직접 입력 지출
 export type ExpenseMethod = 'cash' | 'card' | 'other';
 
+// 2026-11-06 일본 출국 환급. 한 줄이 영수증 한 장
+export type ExpenseRefundStatus = 'pending' | 'checked' | 'done';
+
 export interface PlanExpense {
   id: string;
   planId: string;
@@ -83,6 +86,8 @@ export interface PlanExpense {
   merchant: string;
   method: ExpenseMethod;
   note: string;
+  refundStatus: ExpenseRefundStatus | null;
+  refundMixed: boolean;
   createdAt: string;
 }
 
@@ -94,6 +99,13 @@ export interface CreateExpenseBody {
   dayIndex?: number | null;
   placeId?: string | null;
   note?: string;
+  refundStatus?: ExpenseRefundStatus | null;
+  refundMixed?: boolean;
+}
+
+export interface UpdateExpenseBody {
+  refundStatus: ExpenseRefundStatus | null;
+  refundMixed?: boolean;
 }
 
 // 레거시 Schedule (마이그레이션용)

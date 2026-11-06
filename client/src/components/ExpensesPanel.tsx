@@ -1,3 +1,4 @@
+// 2026-11-06 일본 여행은 결제마다 출국 환급 여부를 적는다
 // 2026-09-28 영수증 사진으로 입력칸을 채우고, 읽는 동안 퍼센트를 보여 준다
 // 2026-09-28 여행 지출: 직접 입력, 일차·장소·통화별 합계
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -8,7 +9,16 @@ import { travelApi } from '../utils/api';
 import { compressReceiptImage } from '../utils/receiptImage';
 import { currencyFromPlace } from '../utils/geoCurrency';
 import { formatDayMd, getDateForDay, getDayCount } from '../utils/days';
-import type { ExpenseMethod, PlanExpense } from '../types/travel';
+import type { ExpenseMethod, ExpenseRefundStatus, PlanExpense } from '../types/travel';
+import {
+  estimatedRefundYen,
+  nextRefundStatus,
+  REFUND_LABEL,
+  refundGroups,
+  showKioskHint,
+  tripUsesJapanRefund,
+} from '../utils/japanRefund';
+import ConfirmDialog from './ConfirmDialog';
 
 interface ExpensesPanelProps {
   canWrite: boolean;
@@ -52,6 +62,10 @@ export default function ExpensesPanel({ canWrite }: ExpensesPanelProps) {
   const [placeId, setPlaceId] = useState('');
   const [note, setNote] = useState('');
   const [scanPercent, setScanPercent] = useState<number | null>(null);
+  const [refundWanted, setRefundWanted] = useState(false);
+  const [refundMixed, setRefundMixed] = useState(false);
+  const [refundOnly, setRefundOnly] = useState(false);
+  const [confirmId, setConfirmId] = useState<string | null>(null);
   const cameraRef = useRef<HTMLInputElement>(null);
   const albumRef = useRef<HTMLInputElement>(null);
   const scanCreep = useRef<number | null>(null);
@@ -128,6 +142,24 @@ export default function ExpensesPanel({ canWrite }: ExpensesPanelProps) {
     return [...map.entries()];
   }, [items]);
 
+  const japanTrip = selectedPlan ? tripUsesJapanRefund(selectedPlan) : false;
+  const refundItems = items.filter(
+    (item) => item.refundStatus === 'pending' || item.refundStatus === 'checked',
+  );
+  const refundEstimate = refundItems.reduce(
+    (sum, item) => (item.currency === 'JPY' ? sum + estimatedRefundYen(item.amount) : sum),
+    0,
+  );
+  const shortfalls = japanTrip ? refundGroups(items) : [];
+  const kiosk =
+    japanTrip &&
+    selectedPlan &&
+    refundItems.length > 0 &&
+    showKioskHint(selectedPlan, activeDay, dayCount);
+  const visibleItems = refundOnly
+    ? items.filter((item) => item.refundStatus === 'pending' || item.refundStatus === 'checked')
+    : items;
+
   if (!selectedPlan) return null;
 
   const resetForm = () => {
@@ -136,6 +168,34 @@ export default function ExpensesPanel({ canWrite }: ExpensesPanelProps) {
     setNote('');
     setPlaceId('');
     setMethod('cash');
+    setRefundWanted(false);
+    setRefundMixed(false);
+  };
+
+  const saveRefund = async (
+    item: PlanExpense,
+    refundStatus: ExpenseRefundStatus | null,
+    mixed: boolean,
+  ) => {
+    if (!selectedPlan) return;
+    const prev = items;
+    setItems((rows) =>
+      rows.map((row) =>
+        row.id === item.id
+          ? { ...row, refundStatus, refundMixed: mixed && refundStatus != null }
+          : row,
+      ),
+    );
+    try {
+      const updated = await travelApi.updateExpense(selectedPlan.id, item.id, {
+        refundStatus,
+        refundMixed: mixed && refundStatus != null,
+      });
+      setItems((rows) => rows.map((row) => (row.id === updated.id ? updated : row)));
+    } catch (err) {
+      setItems(prev);
+      setError(err instanceof Error ? err.message : '환급 표시를 저장하지 못했습니다.');
+    }
   };
 
   const submit = async () => {
@@ -160,6 +220,9 @@ export default function ExpensesPanel({ canWrite }: ExpensesPanelProps) {
         dayIndex: dayIndex === '' ? null : dayIndex,
         placeId: placeId || null,
         note: note.trim(),
+        refundStatus:
+          japanTrip && currency === 'JPY' && refundWanted ? 'pending' : null,
+        refundMixed: japanTrip && currency === 'JPY' && refundWanted && refundMixed,
       });
       setItems((prev) => [created, ...prev]);
       resetForm();
@@ -172,7 +235,8 @@ export default function ExpensesPanel({ canWrite }: ExpensesPanelProps) {
   };
 
   const remove = async (id: string) => {
-    if (!window.confirm('이 지출을 삭제할까요?')) return;
+    if (!selectedPlan) return;
+    setConfirmId(null);
     setError('');
     const prev = items;
     setItems((rows) => rows.filter((row) => row.id !== id));
@@ -287,6 +351,42 @@ export default function ExpensesPanel({ canWrite }: ExpensesPanelProps) {
         <p className="mt-1 text-[11px] text-slate-400">
           직접 적거나 영수증 사진으로 칸을 채웁니다.
         </p>
+        {japanTrip && (
+          <div className="mt-2 space-y-1">
+            <button
+              type="button"
+              onClick={() => setRefundOnly((value) => !value)}
+              className={`rounded-full px-2.5 py-1 text-xs font-medium ${
+                refundOnly
+                  ? 'bg-primary-600 text-white'
+                  : 'bg-primary-50 text-primary-700'
+              }`}
+              aria-pressed={refundOnly}
+            >
+              환급 예정 {refundItems.length}건
+              {refundEstimate > 0 ? ` · 대략 ${refundEstimate.toLocaleString('ko-KR')}엔` : ''}
+            </button>
+            <p className="text-[11px] leading-relaxed text-slate-400">
+              예상액은 세금 포함 금액의 10/110입니다. 식품은 8%라 영수증과 다를 수 있습니다.
+            </p>
+            {shortfalls.map((group) => (
+              <p
+                key={`${group.dayIndex ?? 'x'}-${group.merchant}`}
+                className="text-[11px] text-amber-700"
+              >
+                {group.merchant}
+                {group.dayIndex != null ? ` · ${group.dayIndex}일차` : ''} 세전 약{' '}
+                {Math.round(group.taxExcluded).toLocaleString('ko-KR')}엔, 5,000엔까지{' '}
+                {group.shortfall.toLocaleString('ko-KR')}엔
+              </p>
+            ))}
+            {kiosk && (
+              <p className="text-[11px] leading-relaxed text-slate-600">
+                수하물을 맡기기 전에 출국장 키오스크. 레드면 그 물건을 보여 줘야 합니다.
+              </p>
+            )}
+          </div>
+        )}
       </div>
 
       {error && (
@@ -471,6 +571,36 @@ export default function ExpensesPanel({ canWrite }: ExpensesPanelProps) {
                 maxLength={200}
                 className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-primary-500"
               />
+              {japanTrip && currency === 'JPY' && (
+                <div className="space-y-1">
+                  <button
+                    type="button"
+                    onClick={() => setRefundWanted((value) => !value)}
+                    className={`w-full rounded-lg border py-2 text-xs font-medium ${
+                      refundWanted
+                        ? 'border-primary-600 bg-primary-50 text-primary-700'
+                        : 'border-slate-200 text-slate-500'
+                    }`}
+                    aria-pressed={refundWanted}
+                  >
+                    환급 받을 물건
+                  </button>
+                  {refundWanted && (
+                    <button
+                      type="button"
+                      onClick={() => setRefundMixed((value) => !value)}
+                      className={`w-full rounded-lg border py-2 text-left text-xs leading-relaxed ${
+                        refundMixed
+                          ? 'border-amber-300 bg-amber-50 text-amber-800'
+                          : 'border-slate-200 text-slate-500'
+                      }`}
+                      aria-pressed={refundMixed}
+                    >
+                      이 결제에 일본에서 쓸 물건이 섞임. 하나라도 확인이 안 되면 이 결제 전체가 빠질 수 있습니다.
+                    </button>
+                  )}
+                </div>
+              )}
               <div className="flex gap-2">
                 <button
                   type="button"
@@ -504,7 +634,7 @@ export default function ExpensesPanel({ canWrite }: ExpensesPanelProps) {
         </div>
       ) : (
         <ul className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
-          {items.map((item) => (
+          {visibleItems.map((item) => (
             <li
               key={item.id}
               className="mb-2 flex items-start gap-2 rounded-2xl border border-slate-200 bg-white px-3 py-3"
@@ -532,11 +662,65 @@ export default function ExpensesPanel({ canWrite }: ExpensesPanelProps) {
                 {item.note && (
                   <p className="mt-1 truncate text-xs text-slate-400">{item.note}</p>
                 )}
+                {japanTrip && item.currency === 'JPY' && canWrite && (
+                  <div className="mt-2 flex flex-wrap gap-1">
+                    {item.refundStatus ? (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            void saveRefund(
+                              item,
+                              nextRefundStatus(item.refundStatus!),
+                              item.refundMixed,
+                            )
+                          }
+                          className="rounded-full bg-primary-50 px-2 py-0.5 text-[11px] font-medium text-primary-700"
+                        >
+                          {REFUND_LABEL[item.refundStatus]}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            void saveRefund(item, item.refundStatus, !item.refundMixed)
+                          }
+                          className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${
+                            item.refundMixed
+                              ? 'bg-amber-100 text-amber-800'
+                              : 'bg-slate-100 text-slate-500'
+                          }`}
+                        >
+                          {item.refundMixed ? '섞임' : '한 종류'}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void saveRefund(item, null, false)}
+                          className="rounded-full px-2 py-0.5 text-[11px] text-slate-400"
+                        >
+                          해제
+                        </button>
+                      </>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => void saveRefund(item, 'pending', false)}
+                        className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-600"
+                      >
+                        환급 받을 물건
+                      </button>
+                    )}
+                  </div>
+                )}
+                {item.refundMixed && (
+                  <p className="mt-1 text-[11px] leading-relaxed text-amber-700">
+                    하나라도 확인이 안 되면 이 결제 전체가 빠질 수 있습니다.
+                  </p>
+                )}
               </div>
               {canWrite && (
                 <button
                   type="button"
-                  onClick={() => void remove(item.id)}
+                  onClick={() => setConfirmId(item.id)}
                   className="rounded p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-500"
                   aria-label="지출 삭제"
                 >
@@ -547,6 +731,15 @@ export default function ExpensesPanel({ canWrite }: ExpensesPanelProps) {
           ))}
         </ul>
       )}
+      <ConfirmDialog
+        open={confirmId != null}
+        title="지출 삭제"
+        body="이 지출을 삭제할까요?"
+        onClose={() => setConfirmId(null)}
+        onConfirm={() => {
+          if (confirmId) void remove(confirmId);
+        }}
+      />
     </div>
   );
 }

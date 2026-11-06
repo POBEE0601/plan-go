@@ -15,7 +15,7 @@ export default function LoginPage() {
   const location = useLocation();
   const { login, error, clearError } = useAuthStore();
 
-  const from = (location.state as { from?: string })?.from ?? '/dashboard';
+  const from = (location.state as { from?: string })?.from ?? '/';
 
   const [email, setEmail] = useState(
     () => localStorage.getItem(SAVED_EMAIL_KEY) ?? '',

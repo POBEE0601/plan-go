@@ -33,6 +33,7 @@ import {
   Search,
   Upload,
   UserPlus,
+  Wallet,
   X,
 } from 'lucide-react';
 import Header from '../components/Header';
@@ -48,14 +49,18 @@ import PlanAlertBanner from '../components/PlanAlertBanner';
 import ItineraryImportModal from '../components/ItineraryImportModal';
 import MobileTabBar from '../components/MobileTabBar';
 import BootSplash from '../components/BootSplash';
-import FirstVisitTour from '../components/FirstVisitTour';
+import FirstVisitTour, {
+  DESK_HOME_TOUR,
+  MOBILE_HOME_TOUR,
+} from '../components/FirstVisitTour';
 import MobileTopBar from '../components/MobileTopBar';
 import MobileToolsPanel from '../components/MobileToolsPanel';
 import SavedPlacesPanel from '../components/SavedPlacesPanel';
 import ExpensesPanel from '../components/ExpensesPanel';
 import PlanQuickActions from '../components/PlanQuickActions';
 import { parseDashboardTab } from '../utils/mobileTabs';
-import { currentTripDay, localDateStamp } from '../utils/days';
+import { BOARD_WIDE_MQ } from '../utils/layout';
+import { currentTripDay, getDayCount, localDateStamp } from '../utils/days';
 import { useTravelStore } from '../store/useTravelStore';
 import { usePlanUiStore } from '../store/usePlanUiStore';
 import ExchangeRateBadge from '../components/ExchangeRateBadge';
@@ -146,6 +151,7 @@ export default function DashboardPage() {
   } = useTravelStore();
   const resetPlanUi = usePlanUiStore((s) => s.resetPlanUi);
   const setActiveDay = usePlanUiStore((s) => s.setActiveDay);
+  const activeDay = usePlanUiStore((s) => s.activeDay);
   const savedCategory = usePlanUiStore((s) => s.savedCategory);
   const layoutMode = usePlanUiStore((s) => s.layoutMode);
   const setLayoutMode = usePlanUiStore((s) => s.setLayoutMode);
@@ -173,9 +179,11 @@ export default function DashboardPage() {
   const [isDesktop, setIsDesktop] = useState(
     () => window.matchMedia('(min-width: 1024px)').matches,
   );
+  const [boardWide, setBoardWide] = useState(
+    () => window.matchMedia(BOARD_WIDE_MQ).matches,
+  );
   const [searchParams, setSearchParams] = useSearchParams();
   const mobileTab = parseDashboardTab(searchParams.get('tab'));
-  const desktopSaved = isDesktop && mobileTab === 'saved';
   const canWrite = myRole === 'owner' || myRole === 'editor';
   const isOwner = myRole === 'owner';
   // 좁은 화면에서는 큰 카드 목록형 대신 지도+시트만 사용
@@ -228,10 +236,45 @@ export default function DashboardPage() {
   }, [selectedPlan?.id]);
 
   useEffect(() => {
+    if (!selectedPlan || mobileTab !== 'home') return;
+    const dayCount = getDayCount(selectedPlan.startDate, selectedPlan.endDate);
+    const onKey = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      const tag = target?.tagName;
+      if (
+        tag === 'INPUT' ||
+        tag === 'TEXTAREA' ||
+        tag === 'SELECT' ||
+        target?.isContentEditable
+      ) {
+        return;
+      }
+      if (event.metaKey || event.ctrlKey || event.altKey) return;
+      if (event.key === 'ArrowLeft') {
+        event.preventDefault();
+        setActiveDay(Math.max(1, activeDay - 1));
+      } else if (event.key === 'ArrowRight') {
+        event.preventDefault();
+        setActiveDay(Math.min(dayCount, activeDay + 1));
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [activeDay, mobileTab, selectedPlan, setActiveDay]);
+
+  useEffect(() => {
     const mq = window.matchMedia('(min-width: 1024px)');
-    const onChange = () => setIsDesktop(mq.matches);
+    const wide = window.matchMedia(BOARD_WIDE_MQ);
+    const onChange = () => {
+      setIsDesktop(mq.matches);
+      setBoardWide(wide.matches);
+    };
     mq.addEventListener('change', onChange);
-    return () => mq.removeEventListener('change', onChange);
+    wide.addEventListener('change', onChange);
+    return () => {
+      mq.removeEventListener('change', onChange);
+      wide.removeEventListener('change', onChange);
+    };
   }, []);
 
   useEffect(() => {
@@ -328,10 +371,10 @@ export default function DashboardPage() {
     }
   };
 
-  const openDesktopSection = (section: 'home' | 'saved') => {
+  const openDesktopSection = (section: 'home' | 'saved' | 'expenses') => {
     const next = new URLSearchParams(searchParams);
     if (section === 'home') next.delete('tab');
-    else next.set('tab', 'saved');
+    else next.set('tab', section);
     setSearchParams(next);
   };
 
@@ -377,6 +420,7 @@ export default function DashboardPage() {
             </>
           ) : undefined
         }
+        compact={Boolean(selectedPlan)}
         onBack={() => setPlansOpen(true)}
         backLabel="여행 계획 목록 열기"
         onSearch={
@@ -532,11 +576,11 @@ export default function DashboardPage() {
                       type="button"
                       onClick={() => openDesktopSection('home')}
                       className={`flex items-center gap-1 rounded-md px-2.5 py-1.5 text-xs font-medium ${
-                        mobileTab === 'saved'
-                          ? 'text-slate-500 hover:text-slate-700'
-                          : 'bg-white text-slate-800 shadow-sm'
+                        mobileTab === 'home'
+                          ? 'bg-white text-slate-800 shadow-sm'
+                          : 'text-slate-500 hover:text-slate-700'
                       }`}
-                      aria-pressed={mobileTab !== 'saved'}
+                      aria-pressed={mobileTab === 'home'}
                     >
                       <MapPin className="h-3.5 w-3.5" />
                       여행 홈
@@ -554,6 +598,20 @@ export default function DashboardPage() {
                       <Heart className="h-3.5 w-3.5" />
                       저장
                     </button>
+                    <button
+                      type="button"
+                      data-tour="expense-tab"
+                      onClick={() => openDesktopSection('expenses')}
+                      className={`flex items-center gap-1 rounded-md px-2.5 py-1.5 text-xs font-medium ${
+                        mobileTab === 'expenses'
+                          ? 'bg-white text-slate-800 shadow-sm'
+                          : 'text-slate-500 hover:text-slate-700'
+                      }`}
+                      aria-pressed={mobileTab === 'expenses'}
+                    >
+                      <Wallet className="h-3.5 w-3.5" />
+                      지출
+                    </button>
                   </div>
                 </div>
                 <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
@@ -561,7 +619,7 @@ export default function DashboardPage() {
                     onPrep={() => setPrepOpen(true)}
                     onEmergency={() => setEmergencyOpen(true)}
                   />
-                  {canWrite && !desktopSaved && (
+                  {canWrite && mobileTab === 'home' && (
                     <button
                       type="button"
                       onClick={() => setImportOpen(true)}
@@ -571,7 +629,7 @@ export default function DashboardPage() {
                       일정 가져오기
                     </button>
                   )}
-                  {desktopSaved ? (
+                  {mobileTab === 'saved' ? (
                     <>
                       <button
                         type="button"
@@ -615,7 +673,7 @@ export default function DashboardPage() {
                         </button>
                       )}
                     </>
-                  ) : (
+                  ) : mobileTab === 'home' ? (
                   <div className="hidden rounded-lg border border-slate-200 bg-slate-50 p-0.5 lg:flex">
                     <button
                       type="button"
@@ -644,7 +702,7 @@ export default function DashboardPage() {
                       <span className="hidden sm:inline">지도형</span>
                     </button>
                   </div>
-                  )}
+                  ) : null}
                   {isOwner && (
                     <button
                       type="button"
@@ -658,12 +716,23 @@ export default function DashboardPage() {
                 </div>
               </div>
 
-              {desktopSaved ? (
+              {mobileTab === 'saved' ? (
                 <div className="min-h-0 flex-1 overflow-hidden">
                   <SavedPlacesPanel
                     canWrite={canWrite}
                     searchOpen={searchOpen}
                     mapOpen={savedMapOpen}
+                  />
+                </div>
+              ) : mobileTab === 'expenses' ? (
+                <div className="min-h-0 flex-1 overflow-hidden">
+                  <ExpensesPanel canWrite={canWrite} />
+                </div>
+              ) : mobileTab === 'tools' ? (
+                <div className="min-h-0 flex-1 overflow-hidden">
+                  <MobileToolsPanel
+                    canInvite={isOwner}
+                    onInvite={() => setInviteOpen(true)}
                   />
                 </div>
               ) : useClassic ? (
@@ -683,28 +752,9 @@ export default function DashboardPage() {
                     )}
                   </div>
                 </>
-              ) : isDesktop ? (
+              ) : boardWide ? (
                 <div className="relative min-h-0 flex-1 overflow-hidden">
                   <PlacePoolBoard canWrite={canWrite} />
-                </div>
-              ) : mobileTab === 'saved' ? (
-                <div className="min-h-0 flex-1 overflow-hidden">
-                  <SavedPlacesPanel
-                    canWrite={canWrite}
-                    searchOpen={searchOpen}
-                    mapOpen={savedMapOpen}
-                  />
-                </div>
-              ) : mobileTab === 'expenses' ? (
-                <div className="min-h-0 flex-1 overflow-hidden">
-                  <ExpensesPanel canWrite={canWrite} />
-                </div>
-              ) : mobileTab === 'tools' ? (
-                <div className="min-h-0 flex-1 overflow-hidden">
-                  <MobileToolsPanel
-                    canInvite={isOwner}
-                    onInvite={() => setInviteOpen(true)}
-                  />
                 </div>
               ) : (
                 <div className="relative min-h-0 flex-1 overflow-hidden">
@@ -757,8 +807,11 @@ export default function DashboardPage() {
         </button>
       )}
       <MobileTabBar />
-      {selectedPlan && !isLoading && !plansOpen && !isDesktop && mobileTab === 'home' && (
-        <FirstVisitTour />
+      {selectedPlan && !isLoading && !plansOpen && mobileTab === 'home' && !boardWide && (
+        <FirstVisitTour storageKey="plan-go-home-tour-2" steps={MOBILE_HOME_TOUR} />
+      )}
+      {selectedPlan && !isLoading && !plansOpen && mobileTab === 'home' && isDesktop && (
+        <FirstVisitTour storageKey="plan-go-desk-tour" steps={DESK_HOME_TOUR} />
       )}
 
       <InviteModal open={inviteOpen} onClose={() => setInviteOpen(false)} />

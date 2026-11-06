@@ -8,6 +8,8 @@ import ProtectedRoute from './components/ProtectedRoute';
 import BootSplash from './components/BootSplash';
 import AdminPage from './pages/AdminPage';
 import AiPage from './pages/AiPage';
+import CountryDeskPage from './pages/CountryDeskPage';
+import DeskArticlePage from './pages/DeskArticlePage';
 import HomePage from './pages/HomePage';
 import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
@@ -36,17 +38,19 @@ function AppRoutes() {
   return (
     <Routes>
       <Route path="/" element={<HomePage />} />
+      <Route path="/desk/country/:code" element={<CountryDeskPage />} />
+      <Route path="/desk/:id" element={<DeskArticlePage />} />
       <Route
         path="/login"
         element={
-          isAuthenticated ? <Navigate to="/dashboard" replace /> : <LoginPage />
+          isAuthenticated ? <Navigate to="/" replace /> : <LoginPage />
         }
       />
       <Route
         path="/register"
         element={
           isAuthenticated ? (
-            <Navigate to="/dashboard" replace />
+            <Navigate to="/" replace />
           ) : (
             <RegisterPage />
           )

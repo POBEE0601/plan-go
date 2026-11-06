@@ -1,28 +1,46 @@
+// 2026-11-06 안내는 저장된 장소·카드·시트만 가리킨다
 // 2026-09-23 처음 여행 홈에 들어오면 짧은 안내를 한 번만 보여 준다
 import { useEffect, useState } from 'react';
 
-const STORAGE_KEY = 'plan-go-home-tour';
+export interface TourStep {
+  selector: string;
+  title: string;
+  body: string;
+}
 
-const STEPS = [
-  {
-    selector: '[aria-label="장소 검색"]',
-    title: '장소 찾기',
-    body: '왼쪽 돋보기로 장소를 검색하세요.',
-  },
-  {
-    selector: '[aria-label="장소 검색"]',
-    title: '일정에 담기',
-    body: '검색 결과에서 ‘이 날에 추가’를 누르면 일정에 들어갑니다.',
-  },
+export const MOBILE_HOME_TOUR: TourStep[] = [
   {
     selector: '[data-sheet-min]',
     title: '지도가 따라옵니다',
-    body: '아래 카드를 넘기면 지도가 그 장소로 이동합니다.',
+    body: '아래 카드를 넘기면 지도가 그 장소로 이동합니다. 앞뒤 버튼으로 순서를 바꿉니다.',
   },
   {
     selector: '[aria-label="장소 영역 높이 조절"]',
     title: '일정 목록',
-    body: '손잡이를 올리면 시간순 목록이 열립니다. 장소를 누르면 메모와 카테고리를 바꿀 수 있습니다.',
+    body: '손잡이를 올리면 시간순 목록이 열립니다. 시간을 적고, 장소를 누르면 메모를 바꿉니다.',
+  },
+  {
+    selector: '[data-tour="saved-tab"]',
+    title: '저장한 장소',
+    body: '저장 탭에서 이미 담아 둔 장소를 날짜에 넣습니다.',
+  },
+];
+
+export const DESK_HOME_TOUR: TourStep[] = [
+  {
+    selector: '[data-tour="day-tabs"]',
+    title: '일차',
+    body: '오늘이 표시됩니다. 좌우 화살표로 일차를 바꿉니다.',
+  },
+  {
+    selector: '[data-tour="expense-tab"]',
+    title: '지출',
+    body: '지출은 여기서 엽니다. 일본 여행이면 환급할 결제를 표시할 수 있습니다.',
+  },
+  {
+    selector: '[data-tour="unassigned"]',
+    title: '미배정',
+    body: '아직 날짜에 넣지 않은 장소는 일정 아래에 같이 보입니다.',
   },
 ];
 
@@ -33,28 +51,36 @@ interface Hole {
   height: number;
 }
 
-const readSeen = (): boolean => {
+const readSeen = (key: string): boolean => {
   try {
-    return localStorage.getItem(STORAGE_KEY) === '1';
+    return localStorage.getItem(key) === '1';
   } catch {
     return true;
   }
 };
 
-const markSeen = () => {
+const markSeen = (key: string) => {
   try {
-    localStorage.setItem(STORAGE_KEY, '1');
+    localStorage.setItem(key, '1');
   } catch {
     // 저장이 막혀 있어도 이번 화면에서는 닫는다
   }
 };
 
-export default function FirstVisitTour() {
+interface FirstVisitTourProps {
+  storageKey: string;
+  steps: TourStep[];
+}
+
+export default function FirstVisitTour({
+  storageKey,
+  steps,
+}: FirstVisitTourProps) {
   const [step, setStep] = useState(0);
-  const [seen, setSeen] = useState(readSeen);
+  const [seen, setSeen] = useState(() => readSeen(storageKey));
   const [hole, setHole] = useState<Hole | null>(null);
 
-  const current = STEPS[step];
+  const current = steps[Math.min(step, steps.length - 1)];
 
   useEffect(() => {
     if (seen) return;
@@ -85,12 +111,12 @@ export default function FirstVisitTour() {
   if (seen) return null;
 
   const finish = () => {
-    markSeen();
+    markSeen(storageKey);
     setSeen(true);
   };
 
   const next = () => {
-    if (step >= STEPS.length - 1) finish();
+    if (step >= steps.length - 1) finish();
     else setStep((value) => value + 1);
   };
 
@@ -120,7 +146,7 @@ export default function FirstVisitTour() {
         style={{ top: cardTop }}
       >
         <p className="text-[11px] font-medium text-slate-400">
-          {step + 1} / {STEPS.length}
+          {step + 1} / {steps.length}
         </p>
         <p className="mt-1 text-sm font-semibold text-slate-900">{current.title}</p>
         <p className="mt-1 text-sm leading-relaxed text-slate-600">{current.body}</p>
@@ -137,7 +163,7 @@ export default function FirstVisitTour() {
             onClick={next}
             className="rounded-lg bg-primary-600 px-3 py-1.5 text-sm font-medium text-white"
           >
-            {step >= STEPS.length - 1 ? '알겠어요' : '다음'}
+            {step >= steps.length - 1 ? '알겠어요' : '다음'}
           </button>
         </div>
       </div>

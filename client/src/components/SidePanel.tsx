@@ -28,6 +28,7 @@ import {
   X,
 } from 'lucide-react';
 import EmergencyModal from './EmergencyModal';
+import ConfirmDialog from './ConfirmDialog';
 import TripDateField from './TripDateField';
 import PartyCountFields from './PartyCountFields';
 import DayAccordion from './DayAccordion';
@@ -97,6 +98,12 @@ export default function SidePanel({
   const [searchingRegion, setSearchingRegion] = useState(false);
   const [regionError, setRegionError] = useState('');
   const [emergencyPlan, setEmergencyPlan] = useState<TravelPlan | null>(null);
+  const [confirm, setConfirm] = useState<{
+    title: string;
+    body: string;
+    confirmLabel: string;
+    run: () => Promise<void>;
+  } | null>(null);
   const [party, setParty] = useState({
     adults: 1,
     children: 0,
@@ -184,33 +191,21 @@ export default function SidePanel({
     const owner = ownsListedPlan(plan, userId, selectedPlanId, myRole);
 
     if (owner) {
-      if (
-        !window.confirm(
-          `'${plan.title}' 여행 계획을 삭제하시겠습니까?\n모든 일정이 삭제되며 되돌릴 수 없습니다.`,
-        )
-      ) {
-        return;
-      }
-      try {
-        await deleteTravelPlan(plan.id);
-      } catch {
-        // store에서 error 상태 처리
-      }
+      setConfirm({
+        title: '여행 계획 삭제',
+        body: `'${plan.title}' 여행 계획을 삭제할까요?\n모든 일정이 삭제되며 되돌릴 수 없습니다.`,
+        confirmLabel: '삭제',
+        run: () => deleteTravelPlan(plan.id),
+      });
       return;
     }
 
-    if (
-      !window.confirm(
-        `'${plan.title}' 여행에서 나가시겠습니까?\n일정 자체는 삭제되지 않으며, 내 목록에서만 사라집니다.`,
-      )
-    ) {
-      return;
-    }
-    try {
-      await leaveTravelPlan(plan.id);
-    } catch {
-      // store에서 error 상태 처리
-    }
+    setConfirm({
+      title: '여행에서 나가기',
+      body: `'${plan.title}' 여행에서 나갈까요?\n일정 자체는 삭제되지 않으며, 내 목록에서만 사라집니다.`,
+      confirmLabel: '나가기',
+      run: () => leaveTravelPlan(plan.id),
+    });
   };
 
   const pickRegion = async (suggestion: CitySuggestion) => {
@@ -587,6 +582,18 @@ export default function SidePanel({
         </div>
       )}
     </aside>
+    <ConfirmDialog
+      open={confirm != null}
+      title={confirm?.title ?? ''}
+      body={confirm?.body ?? ''}
+      confirmLabel={confirm?.confirmLabel}
+      onClose={() => setConfirm(null)}
+      onConfirm={() => {
+        const job = confirm?.run;
+        setConfirm(null);
+        if (job) void job();
+      }}
+    />
     <EmergencyModal
       open={emergencyPlan != null}
       onClose={() => setEmergencyPlan(null)}

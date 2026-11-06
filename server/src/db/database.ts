@@ -22,6 +22,8 @@ import type {
   CustomCategory,
   DayAssignment,
   ExpenseMethod,
+  ExpenseRefundStatus,
+  UpdateExpenseBody,
   MemberRole,
   Place,
   PlanExpense,
@@ -870,6 +872,20 @@ export const deletePrepItem = async (
   return (result.rowCount ?? 0) > 0;
 };
 
+const REFUND_STATUSES = new Set<ExpenseRefundStatus>([
+  'pending',
+  'checked',
+  'done',
+]);
+
+const parseRefundStatus = (value: unknown): ExpenseRefundStatus | null => {
+  if (value == null || value === '' || value === 'none') return null;
+  if (typeof value === 'string' && REFUND_STATUSES.has(value as ExpenseRefundStatus)) {
+    return value as ExpenseRefundStatus;
+  }
+  throw new Error('환급 상태를 확인해 주세요.');
+};
+
 // 2026-09-28 여행 지출
 const mapExpense = (row: Record<string, unknown>): PlanExpense => ({
   id: String(row.id),
@@ -884,8 +900,17 @@ const mapExpense = (row: Record<string, unknown>): PlanExpense => ({
       ? row.method
       : 'cash',
   note: String(row.note ?? ''),
+  refundStatus: parseStoredRefund(row.refund_status),
+  refundMixed: row.refund_mixed === true,
   createdAt: asIso(row.created_at),
 });
+
+const parseStoredRefund = (value: unknown): ExpenseRefundStatus | null => {
+  if (typeof value !== 'string') return null;
+  return REFUND_STATUSES.has(value as ExpenseRefundStatus)
+    ? (value as ExpenseRefundStatus)
+    : null;
+};
 
 const requireReadablePlan = async (
   planId: string,
@@ -950,6 +975,9 @@ export const addExpense = async (
     throw new Error('장소를 찾을 수 없습니다. 입력을 확인해 주세요.');
   }
 
+  const refundStatus = parseRefundStatus(body.refundStatus);
+  const refundMixed = Boolean(body.refundMixed) && refundStatus != null;
+
   const item: PlanExpense = {
     id: generateId(),
     planId,
@@ -960,12 +988,14 @@ export const addExpense = async (
     merchant,
     method,
     note,
+    refundStatus,
+    refundMixed,
     createdAt: new Date().toISOString(),
   };
   const { rows } = await pool.query(
     `INSERT INTO plan_expenses
-      (id, plan_id, day_index, place_id, amount, currency, merchant, method, note)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+      (id, plan_id, day_index, place_id, amount, currency, merchant, method, note, refund_status, refund_mixed)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
      RETURNING *`,
     [
       item.id,
@@ -977,7 +1007,29 @@ export const addExpense = async (
       item.merchant,
       item.method,
       item.note,
+      item.refundStatus,
+      item.refundMixed,
     ],
+  );
+  return rows[0] ? mapExpense(rows[0] as Record<string, unknown>) : null;
+};
+
+export const updateExpense = async (
+  planId: string,
+  userId: string,
+  expenseId: string,
+  body: UpdateExpenseBody,
+): Promise<PlanExpense | null> => {
+  const plan = await requireWritablePlan(planId, userId);
+  if (!plan) return null;
+  const refundStatus = parseRefundStatus(body.refundStatus);
+  const refundMixed = Boolean(body.refundMixed) && refundStatus != null;
+  const { rows } = await pool.query(
+    `UPDATE plan_expenses
+        SET refund_status = $1, refund_mixed = $2
+      WHERE id = $3 AND plan_id = $4
+      RETURNING *`,
+    [refundStatus, refundMixed, expenseId, planId],
   );
   return rows[0] ? mapExpense(rows[0] as Record<string, unknown>) : null;
 };

@@ -66,6 +66,7 @@ interface TravelStore {
   ) => Promise<void>;
   // 일정 장소당 메모 1개만 유지 (빈 문자열이면 삭제)
   updateAssignmentMemo: (assignmentId: string, memo: string) => Promise<void>;
+  updateAssignmentTime: (assignmentId: string, time: string) => Promise<void>;
   removeFromDay: (assignmentId: string) => Promise<void>;
   reorderDayAssignments: (
     dayIndex: number,
@@ -481,6 +482,33 @@ export const useTravelStore = create<TravelStore>((set, get) => ({
       set({
         error:
           err instanceof Error ? err.message : '일정 이동에 실패했습니다.',
+      });
+    }
+  },
+
+  updateAssignmentTime: async (assignmentId, time) => {
+    const plan = get().selectedPlan;
+    if (!plan || !canWriteRole(get().myRole)) return;
+    try {
+      const nextTime = time.trim().slice(0, 8);
+      const updated = await travelApi.updateAssignment(plan.id, assignmentId, {
+        time: nextTime,
+      });
+      set((state) => ({
+        selectedPlan: state.selectedPlan
+          ? {
+              ...state.selectedPlan,
+              dayAssignments: state.selectedPlan.dayAssignments.map((d) =>
+                d.id === assignmentId ? updated : d,
+              ),
+            }
+          : null,
+        error: null,
+      }));
+    } catch (err) {
+      set({
+        error:
+          err instanceof Error ? err.message : '시간을 저장하지 못했습니다.',
       });
     }
   },

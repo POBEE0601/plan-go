@@ -36,7 +36,7 @@ export default function RegisterPage() {
     setIsSubmitting(true);
     try {
       await register({ name, email, password });
-      navigate('/dashboard', { replace: true });
+      navigate('/', { replace: true });
     } catch {
       // store에서 error 처리
     } finally {
